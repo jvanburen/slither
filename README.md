@@ -1,0 +1,1 @@
+A slitherlink "solver"

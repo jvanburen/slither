@@ -1,0 +1,20 @@
+name:                slither
+version:             0.1.0.0
+synopsis:            Simple project template from stack
+description:         Please see README.md
+homepage:            https://github.com/jvanburen/slither#readme
+license:             BSD3
+license-file:        LICENSE
+author:              Jacob Van Buren
+maintainer:          jvanbure@andrew.cmu.edu
+copyright:           2016 Jacob Van Buren
+category:            Web
+build-type:          Simple
+cabal-version:       >=1.10
+
+executable slither
+  hs-source-dirs:      src
+  main-is:             Main.hs
+  other-modules:	   Slither, Printer
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5, array >= 0.5, containers >= 0.5, ansi-terminal >= 0.6
