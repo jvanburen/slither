@@ -1,6 +1,6 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
 module Slither (Color(..), LineType(..), NumAdj(..), Coord, Adj, Slitherlink, 
-    Box(..), Line(..), Point(..),
+    Box(..), Line(..), Point(..), Updates, update,
     getLines, getBoxes, getPoints, pointGetAdj, pointGetLines, 
     getLineType, makeSlither, boxGetNum, boxColor, lineAdjBoxes, 
     boxGetAdjBoxes, boxGetIncidentLines, boxGetAdjColors) where
@@ -18,7 +18,7 @@ data NumAdj = Unknown | Zero | One | Two | Three  deriving (Eq, Enum, Show)
 type Coord = (Int, Int) -- Row, col from the top left.
 
 data Slitherlink = Slither { size :: (Int, Int) -- row, col of block rows, not points
-                           , lines :: M.Map (Coord, Coord) LineType
+                           , lines :: M.Map Line LineType
                            , boxes :: A.Array Coord Color
                            , numbers :: A.Array Coord NumAdj
                            } deriving (Show)
@@ -35,8 +35,10 @@ newtype Box = Box Coord deriving (Eq, Show)
 newtype Line = Line (Coord, Coord) deriving (Eq, Show, Ord)
 newtype Point = Point Coord deriving (Eq, Show)
 
+type Updates = ([(Line, LineType)], [(Box, Color)])
+
 getLines :: Slitherlink -> [Line]
-getLines = map Line . M.keys . Slither.lines
+getLines = M.keys . Slither.lines
 
 getBoxes :: Slitherlink -> [Box]
 getBoxes = map Box . A.indices . boxes
@@ -105,7 +107,6 @@ boxGetAdjBoxes s (Box coord) =
 boxGetNum :: Slitherlink -> Box -> NumAdj
 boxGetNum s (Box b) = (numbers s) A.! b
 
-
 --(above/left, down/right)
 lineAdjBoxes :: Slitherlink -> Line -> (Maybe Box, Maybe Box)
 lineAdjBoxes s (Line((r1, c1), (r2, c2))) =
@@ -114,7 +115,6 @@ lineAdjBoxes s (Line((r1, c1), (r2, c2))) =
         next = (r1, c1)
         check = checkBounds (0, 0) $ size s
     in (fmap Box $ check prev, fmap Box $ check next)
-
 
 boxColor :: Slitherlink -> Box -> Color
 boxColor s (Box coord) = (boxes s) A.! coord
@@ -135,8 +135,8 @@ makeSlither (rows, cols) nums =
         boxNumList = map (\(a,b) -> (a, intToBoxNum b)) nums
         boxNumbers = A.accum (const id) emptyBoxNumbers boxNumList
         indices = A.range ((0, 0), (rows, cols))
-        lineList = ([(p, (r+1, c)) | p@(r, c) <- indices, r < rows]
-                 ++ [(p, (r, c+1)) | p@(r, c) <- indices, c < cols])
+        lineList = ([Line (p, (r+1, c)) | p@(r, c) <- indices, r < rows]
+                 ++ [Line (p, (r, c+1)) | p@(r, c) <- indices, c < cols])
         lineTypes = M.fromList (zip lineList (repeat Tbd))
     in
         Slither { size = (rows, cols)
@@ -153,5 +153,38 @@ intToBoxNum 3 = Three
 intToBoxNum _ = error "why"
 
 getLineType :: Slitherlink -> Line -> LineType
-getLineType s (Line l) = (Slither.lines s) M.! l
+getLineType s l = (Slither.lines s) M.! l
+
+-- updateLines :: Slitherlink -> [(Line, LineType)] -> Slitherlink
+-- updateLines s l = Slither { size=size s
+--                           , lines = updated
+--                           , boxes = boxes s
+--                           , numbers = numbers s
+--                           }
+--     where
+--         updates = M.fromList l
+--         updated = M.union updates $ Slither.lines s
+
+-- TODO: check no conflicts?
+-- updateBoxes :: Slitherlink -> [(Box, Color)] -> Slitherlink
+-- updateBoxes s l = Slither { size = size s
+--                           , lines = Slither.lines s
+--                           , boxes = newboxes s
+--                           , numbers = numbers s
+--                           }
+--     where
+--         newboxes = A.accum (const id) l $ boxes s
+
+update :: Slitherlink -> Updates -> Slitherlink
+update s (lineupdates, boxupdates) = let
+        updates = M.fromList lineupdates
+        newlines = M.union updates $ Slither.lines s
+        newboxes = boxes s A.// map (\(Box b, new) -> (b, new)) boxupdates
+    in
+         Slither { size = size s
+                 , lines = newlines
+                 , boxes = newboxes
+                 , numbers = numbers s
+                 }
+
 
