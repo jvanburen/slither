@@ -3,11 +3,12 @@ module Slither (Color(..), LineType(..), NumAdj(..), Coord, Adj, Slitherlink,
     Box(..), Line(..), Point(..), Updates, update,
     getLines, getBoxes, getPoints, pointGetAdj, pointGetLines, 
     getLineType, makeSlither, boxGetNum, boxColor, lineAdjBoxes, 
-    boxGetAdjBoxes, boxGetIncidentLines, boxGetAdjColors) where
+    boxGetAdjBoxes, boxGetIncidentLines) where
 
 import qualified Data.Map.Strict as M
 import qualified Data.Array as A
 import qualified Data.Set as S
+import Data.Maybe (catMaybes)
 
 data Color = Empty | Blue | Yellow deriving (Eq, Enum, Show)
 
@@ -68,19 +69,19 @@ checkBounds (loRow, loCol) (hiRow, hiCol) (row, col)
     | col >= hiCol = Nothing
     | otherwise    = Just (row, col)
 
-coordNeighbors :: Coord -> Coord -> Coord -> Adj (Maybe Coord)
-coordNeighbors lo hi (row, col) = fmap (checkBounds lo hi) neighbors
-    where neighbors = Adj (row-1, col) (row+1, col) (row, col-1) (row, col+1)
+coordNeighbors :: Coord -> Coord -> Coord -> [Coord]
+coordNeighbors lo hi (row, col) = catMaybes $ map (checkBounds lo hi) neighbors
+    where neighbors = [(row-1, col), (row+1, col), (row, col-1), (row, col+1)]
 
-pointGetAdj :: Slitherlink -> Point -> Adj (Maybe Point)
+pointGetAdj :: Slitherlink -> Point -> [Point]
 pointGetAdj s (Point coord) =
-    fmap (fmap Point) neighbors
+    map Point neighbors
     where neighbors = coordNeighbors (0, 0) (size s) coord
 
-pointGetLines :: Slitherlink -> Point -> Adj (Maybe Line)
-pointGetLines s p = fmap (fmap $ canonicalLine p) $ pointGetAdj s p
+pointGetLines :: Slitherlink -> Point -> [Line]
+pointGetLines s p = map (canonicalLine p) $ pointGetAdj s p
 
-boxGetIncidentLines :: Slitherlink -> Box -> Adj Line
+boxGetIncidentLines :: Slitherlink -> Box -> [Line]
 boxGetIncidentLines s (Box (r, c)) =
     let
         p1 = (r,c)
@@ -90,17 +91,12 @@ boxGetIncidentLines s (Box (r, c)) =
         -- 1   2
         --  BOX
         -- 3   4
-
-        -- Adj _ (Just d1) _ (Just d2) = pointGetAdj (Point coord)
-        -- Adj (Just left) _ _ (Just bot) = pointGetLines d1
-        -- Adj _ (Just r) (Just top) _ = pointGetLines d2
     in
-        fmap Line $ Adj (p1, p2) (p3, p4) (p2, p3) (p2, p4)
+        map Line [(p1, p2), (p3, p4), (p2, p3), (p2, p4)]
 
-boxGetAdjBoxes :: Slitherlink -> Box -> Adj (Maybe Box)
-boxGetAdjBoxes s (Box coord) =
-    fmap (fmap Box) neighbors
-    where 
+boxGetAdjBoxes :: Slitherlink -> Box -> [Box]
+boxGetAdjBoxes s (Box coord) = map Box neighbors
+    where
         (rows, cols) = size s
         neighbors = coordNeighbors (0, 0) (rows - 1, cols - 1) coord
 
@@ -123,8 +119,8 @@ boxNum :: Slitherlink -> Box -> NumAdj
 boxNum s (Box coord) = (numbers s) A.! coord
 
 -- Replaces Off-the-grid values with yellow
-boxGetAdjColors :: Slitherlink -> Box -> Adj Color
-boxGetAdjColors s = fmap (maybe Yellow $ boxColor s) . boxGetAdjBoxes s
+-- boxGetAdjColors :: Slitherlink -> Box -> Adj Color
+-- boxGetAdjColors s = fmap (maybe Yellow $ boxColor s) . boxGetAdjBoxes s
 
 makeSlither :: Coord -> [(Coord, Int)] -> Slitherlink
 makeSlither (rows, cols) nums =
