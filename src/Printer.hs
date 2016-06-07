@@ -3,6 +3,7 @@ module Printer (showSlitherlink) where
 import qualified Data.Map.Strict as M
 import System.Console.ANSI
 import qualified System.Console.ANSI as ANSI
+import Data.Maybe
 
 import Slither
 
@@ -45,15 +46,10 @@ showBox :: Slitherlink -> Slither.Box -> IO ()
 showBox s b@(Box(r, c)) = do
     setCursorPosition (2*r+1) (2*c+1)
     setSGR (case (boxColor s b) of
-        Slither.Blue -> bluebox
-        Slither.Yellow -> yellowbox
-        _ -> bg)
-    putStr (case (boxGetNum s b) of
-        Unknown -> " "
-        Zero -> "0"
-        One -> "1"
-        Two -> "2"
-        Three -> "3")
+        Just Slither.Blue -> bluebox
+        Just Slither.Yellow -> yellowbox
+        Nothing -> bg)
+    putStr (maybe " " show $ boxGetNum s b)
 showLine :: Slitherlink -> Slither.Line -> IO ()
 showLine s (l@(Line((r, c), _))) = 
     let 
@@ -65,8 +61,8 @@ showLine s (l@(Line((r, c), _))) =
     setCursorPosition r' c'
     setSGR bg
     putStr (case (hv, getLineType s l) of
-        (_, Tbd) -> " "
-        (_, X) -> x
+        (_, Nothing) -> " "
+        (_, Just X) -> x
         (H, _) -> hline
         (V, _) -> vline)
 
