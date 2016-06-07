@@ -26,15 +26,15 @@ import Slither
 data LineOrientation = H | V deriving (Show, Eq)
 
 getLineOrientation :: Slither.Line -> LineOrientation
-getLineOrientation (Line((r1, _), (r2, _))) = 
-    if r1 == r2 then V else H
+getLineOrientation (Line((r1, _), (r2, _))) =
+    if r1 == r2 then H else V
 
 bluebox = [SetColor Background Vivid ANSI.Cyan]
 yellowbox = [SetColor Background Vivid ANSI.Yellow]
 bg = [SetColor Background Vivid ANSI.White]
 x = "\x00D7"
-vline = "\x2503"
-hline = "\x2501"
+vline = "|" -- "\x2503"
+hline = "-" -- "\x2501"
 
 showPoint :: Slitherlink -> Slither.Point -> IO ()
 showPoint s (p@(Point(r, c))) = do
@@ -49,14 +49,14 @@ showBox s b@(Box(r, c)) = do
         Just Slither.Blue -> bluebox
         Just Slither.Yellow -> yellowbox
         Nothing -> bg)
-    putStr (maybe " " show $ boxGetNum s b)
+    putStr (maybe " " show $ boxNum s b)
 showLine :: Slitherlink -> Slither.Line -> IO ()
-showLine s (l@(Line((r, c), _))) = 
-    let 
+showLine s (l@(Line((r, c), _))) =
+    let
         hv = getLineOrientation l
-        (r', c') = case hv of 
-            H -> (2*r + 1, 2*c)
-            V -> (2*r, 2*c + 1)
+        (r', c') = case hv of
+            H -> (2*r, 2*c + 1)
+            V -> (2*r + 1, 2*c)
     in do
     setCursorPosition r' c'
     setSGR bg

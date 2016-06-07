@@ -15,6 +15,6 @@ cabal-version:       >=1.10
 executable slither
   hs-source-dirs:      src
   main-is:             Main.hs
-  other-modules:	   Slither, Printer
+  other-modules:	   Slither, Printer, Logic, Solver
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5, array >= 0.5, containers >= 0.5, ansi-terminal >= 0.6

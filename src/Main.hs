@@ -2,6 +2,7 @@ module Main where
 
 import Slither
 import Printer
+import Solver
 
 s = makeSlither (7, 7) [ ((0, 0), 2)
                        , ((0, 1), 2)
@@ -28,6 +29,4 @@ s = makeSlither (7, 7) [ ((0, 0), 2)
                        ]
 
 main :: IO ()
-main = do
-    showSlitherlink s
-
+main = showSlitherlink s

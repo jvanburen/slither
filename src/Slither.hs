@@ -1,9 +1,9 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
-module Slither (BoxColor(..), LineType(..), Coord, Slitherlink, 
+module Slither (BoxColor(..), LineType(..), Coord, Slitherlink,
     Box(..), Line(..), Point(..), Updates, update,
-    getLines, getBoxes, getPoints, pointGetAdj, pointGetLines, 
-    getLineType, makeSlither, boxGetNum, boxColor, lineAdjBoxes, 
-    boxGetAdjBoxes, boxGetIncidentLines) where
+    getLines, getBoxes, getPoints, pointAdjPoints, pointIncidentLines,
+    getLineType, makeSlither, boxNum, boxColor, lineAdjBoxes,
+    boxAdjBoxes, boxIncidentLines) where
 
 import qualified Data.Map.Strict as M
 import qualified Data.Array as A
@@ -73,41 +73,44 @@ coordNeighbors :: Coord -> Coord -> Coord -> [Coord]
 coordNeighbors lo hi (row, col) = catMaybes $ map (checkBounds lo hi) neighbors
     where neighbors = [(row-1, col), (row+1, col), (row, col-1), (row, col+1)]
 
-pointGetAdj :: Slitherlink -> Point -> [Point]
-pointGetAdj s (Point coord) =
+pointAdjPoints :: Slitherlink -> Point -> [Point]
+pointAdjPoints s (Point coord) =
     map Point neighbors
     where neighbors = coordNeighbors (0, 0) (size s) coord
 
-pointGetLines :: Slitherlink -> Point -> [Line]
-pointGetLines s p = map (canonicalLine p) $ pointGetAdj s p
+pointIncidentLines :: Slitherlink -> Point -> [Line]
+pointIncidentLines s p = map (canonicalLine p) $ pointAdjPoints s p
 
-boxGetIncidentLines :: Slitherlink -> Box -> [Line]
-boxGetIncidentLines s (Box (r, c)) =
+boxIncidentLines :: Slitherlink -> Box -> [Line]
+boxIncidentLines s (Box (r, c)) =
     let
-        p1 = (r,c)
-        p2 = (r,c+1)
-        p3 = (r+1,c)
-        p4 = (r+1,c+1)
+        p1 = Point (r,c)
+        p2 = Point (r,c+1)
+        p3 = Point (r+1,c)
+        p4 = Point (r+1,c+1)
         -- 1   2
         --  BOX
         -- 3   4
     in
-        map Line [(p1, p2), (p3, p4), (p2, p3), (p2, p4)]
+        [ (canonicalLine p1 p2)
+        , (canonicalLine p3 p4)
+        , (canonicalLine p1 p3)
+        , (canonicalLine p2 p4)
+        ]
 
-boxGetAdjBoxes :: Slitherlink -> Box -> [Box]
-boxGetAdjBoxes s (Box coord) = map Box neighbors
+boxAdjBoxes :: Slitherlink -> Box -> [Box]
+boxAdjBoxes s (Box coord) = map Box neighbors
     where
-        (rows, cols) = size s
-        neighbors = coordNeighbors (0, 0) (rows - 1, cols - 1) coord
+        neighbors = coordNeighbors (0, 0) (size s) coord
 
-boxGetNum :: Slitherlink -> Box -> NumAdj
-boxGetNum s (Box b) = (numbers s) A.! b
+-- boxGetNum :: Slitherlink -> Box -> NumAdj
+-- boxGetNum s (Box b) = (numbers s) A.! b
 
 --(above/left, down/right)
 lineAdjBoxes :: Slitherlink -> Line -> (Maybe Box, Maybe Box)
 lineAdjBoxes s (Line((r1, c1), (r2, c2))) =
     let
-        prev = (2*r1 - r2, 2*c1 - c2)
+        prev = if r1 == r2 then (r1 - 1, c1) else (r1, c1-1)
         next = (r1, c1)
         check = checkBounds (0, 0) $ size s
     in (fmap Box $ check prev, fmap Box $ check next)
