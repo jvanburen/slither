@@ -1,5 +1,5 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
-module Slither (BoxColor(..), LineType(..), Coord, Slitherlink,
+module Slither (BoxColor(..), LineType(..), Coord, Slitherlink(..),
     Box(..), Line(..), Point(..), Updates, update,
     getLines, getBoxes, getPoints, pointAdjPoints, pointIncidentLines,
     getLineType, makeSlither, boxNum, boxColor, lineAdjBoxes,
@@ -10,7 +10,7 @@ import qualified Data.Array as A
 import qualified Data.Set as S
 import Data.Maybe (catMaybes)
 
-data BoxColor = Blue | Yellow deriving (Eq, Enum, Show)
+type BoxColor = Int
 
 data LineType = L | X deriving (Eq, Enum, Show)
 
@@ -24,6 +24,9 @@ data Slitherlink = Slither { size :: (Int, Int) -- row, col of block rows, not p
                            , numbers :: A.Array Coord NumAdj
                            } deriving (Show, Eq)
 
+data Update = BoxUpdate(Box, BoxColor)
+            | LineUpdate(Line, LineType)
+
 --  * - * - * - *
 --  | # | # | # |
 --  * - * - * - *
@@ -35,8 +38,6 @@ data Slitherlink = Slither { size :: (Int, Int) -- row, col of block rows, not p
 newtype Box = Box Coord deriving (Eq, Show)
 newtype Line = Line (Coord, Coord) deriving (Eq, Show, Ord)
 newtype Point = Point Coord deriving (Eq, Show)
-
-type Updates = ([(Line, LineType)], [(Box, BoxColor)])
 
 getLines :: Slitherlink -> [Line]
 getLines = M.keys . Slither.lines
@@ -76,7 +77,14 @@ coordNeighbors lo hi (row, col) = catMaybes $ map (checkBounds lo hi) neighbors
 pointAdjPoints :: Slitherlink -> Point -> [Point]
 pointAdjPoints s (Point coord) =
     map Point neighbors
-    where neighbors = coordNeighbors (0, 0) (size s) coord
+    where 
+        neighbors = coordNeighbors (0, 0) (maxrow + 1, maxcol + 1) coord
+        (maxrow, maxcol) = size s
+
+pointAdjBoxes :: Slitherlink -> Point -> [Box]
+pointAdjBoxes s (Point (r, c)) = map Box $ catMaybes 
+    $ map (checkBounds (0, 0) (size s)) 
+    [(r, c), (r, c-1), (r-1, c), (r-1, c-1)]    
 
 pointIncidentLines :: Slitherlink -> Point -> [Line]
 pointIncidentLines s p = map (canonicalLine p) $ pointAdjPoints s p

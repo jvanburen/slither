@@ -24,6 +24,6 @@ applyAllRulesSoFar s = collectUpdates $ map ($ s) [ applyLineRule lineColorRule
                                                   , applyBoxRule cornerRules
                                                   , applyPointRule lineContinueRule
                                                   , applyBoxRule colorAdj
+                                                  , applyLineRule separateMaxBoxes
                                                   ]
-
 

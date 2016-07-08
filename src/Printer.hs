@@ -6,6 +6,7 @@ import qualified System.Console.ANSI as ANSI
 import Data.Maybe
 
 import Slither
+import Logic (maybeBoxColor)
 
 --  * - * - * - *
 --  | # | # | # |
@@ -32,36 +33,50 @@ getLineOrientation (Line((r1, _), (r2, _))) =
 bluebox = [SetColor Background Vivid ANSI.Cyan]
 yellowbox = [SetColor Background Vivid ANSI.Yellow]
 bg = [SetColor Background Vivid ANSI.White]
-x = "\x00D7"
-vline = "|" -- "\x2503"
-hline = "-" -- "\x2501"
+x = "\x2573 " -- "\x00D7"
+
+-- https://en.wikipedia.org/wiki/Block_Elements
+
+vline = "\x2503 " -- "\x2590\x258C" -- "\x2503"
+hline = "\x2501\x2501" --     "\x2584\x2584" -- "\x2501"
+bigX = "\x2573 " -- space included
+
+
+-- bignums = "\xFF10\xFF11\xFF12\xFF13\xFF14\xFF15\xFF16\xFF17\xFF18\xFF19"
+bignums = "0123456789"
+pad n = if n < 10 then (show n) ++ " " -- (bignums !! n):" "
+    else (show n)
 
 showPoint :: Slitherlink -> Slither.Point -> IO ()
 showPoint s (p@(Point(r, c))) = do
-    setCursorPosition (2*r) (2*c)
+    setCursorPosition (2*r) (4*c)
     setSGR bg
-    putStr "\x00B7" -- for now
+    putStr "\xFF65 " -- for now
 
 showBox :: Slitherlink -> Slither.Box -> IO ()
 showBox s b@(Box(r, c)) = do
-    setCursorPosition (2*r+1) (2*c+1)
+    setCursorPosition (2*r+1) (4*c+2)
     setSGR (case (boxColor s b) of
         Just Slither.Blue -> bluebox
         Just Slither.Yellow -> yellowbox
         Nothing -> bg)
-    putStr (maybe " " show $ boxNum s b)
+    putStr (maybe "  " pad $ boxNum s b)
 showLine :: Slitherlink -> Slither.Line -> IO ()
 showLine s (l@(Line((r, c), _))) =
     let
         hv = getLineOrientation l
         (r', c') = case hv of
-            H -> (2*r, 2*c + 1)
-            V -> (2*r + 1, 2*c)
+            H -> (2*r, 4*c + 2)
+            V -> (2*r + 1, 4*c)
+        (lbox, rbox) = lineAdjBoxes s l
+        lcolor = maybeBoxColor s lbox
+        rcolor = maybeBoxColor s rbox
     in do
     setCursorPosition r' c'
     setSGR bg
+
     putStr (case (hv, getLineType s l) of
-        (_, Nothing) -> " "
+        (_, Nothing) -> "  "
         (_, Just X) -> x
         (H, _) -> hline
         (V, _) -> vline)

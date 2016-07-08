@@ -1,16 +1,16 @@
 module Logic where
 
-import Slither
+import Slither 
 import Data.Maybe (maybe)
 
 noUpdates :: Slither.Updates
-noUpdates = ([], [])
+noUpdates = []
 
-updateBoxes :: [(Box, BoxColor)] -> Slither.Updates
-updateBoxes bs = ([], bs)
+updateBoxes :: [(Box, BoxColor)] -> [Slither.Update]
+updateBoxes = map BoxUpdate 
 
-updateLines :: [(Line, LineType)] -> Slither.Updates
-updateLines ls = (ls, [])
+updateLines :: [(Line, LineType)] -> [Slither.Updates]
+updateLines = map LineUpdate
 
 -- None will map to Yellow, to signify "off the board"
 maybeBoxColor :: Slitherlink -> Maybe Box -> Maybe BoxColor
@@ -43,8 +43,8 @@ lineColorRule s line = let
             (Nothing, _) -> noUpdates
             (_, Nothing) -> noUpdates
             (Just c1, Just c2) -> if c1 == c2
-                then updateLines [(line, X)]
-                else updateLines [(line, L)]
+                then updateLines [LineUpdate (line, X)]
+                else updateLines [LineUpdate (line, L)]
         Just X -> case (maybeBoxColor s b1, maybeBoxColor s b2) of
             (Just c1, Nothing) ->
                 maybe noUpdates (\b2 -> updateBoxes [(b2, c1)]) b2
@@ -109,7 +109,7 @@ lineContinueRule s p = let
     in
         if length ls == 2
             then setLinesTo X tbds
-        else if length ls + length tbds == 2 && length ls > 0
+        else if length ls == 1 && length tbds == 1
             then setLinesTo L tbds
         else if length ls > 2
             then error "too many lines set"
@@ -137,8 +137,29 @@ colorAdj s box = let
             else noUpdates
 
 
+isMaxBox s Nothing = False
+isMaxBox s (Just box) = case boxNum s box of
+    Nothing -> False
+    Just numSolid -> (length $ boxIncidentLines s box) == numSolid + 1
+
+-- adjacent 3s rule
+separateMaxBoxes :: Slitherlink -> Line -> Slither.Updates
+separateMaxBoxes s line =
+    if isMaxBox s b1 && isMaxBox s b2
+        then updateLines [(line, L)]
+        else noUpdates
+    where (b1, b2) = lineAdjBoxes s line
+
+-- 3 cornered by zero rule
+necessaryLines :: Slitherlink -> Point -> Slither.Updates
+necessaryLines s p = 
+    if any (isMaxBox s) $ 
 
 
+
+-- If this returns True, the board is unsolvable
+-- isInvalid :: Slitherlink -> Bool
+-- isInvalid = stuff
 
 -- the coloring rules for 1s and 3s also
 -- if it has at least 2 neighbors
