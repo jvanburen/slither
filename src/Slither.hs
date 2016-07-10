@@ -1,5 +1,5 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
-module Slither (BoxColor(..), LineType(..), Coord, Slitherlink(..),
+module Slither (BoxColor(..), LineType(..), Slitherlink(..),
     Box(..), Line(..), Point(..), Updates, update,
     getLines, getBoxes, getPoints, pointAdjPoints, pointIncidentLines,
     getLineType, makeSlither, boxNum, boxColor, lineAdjBoxes,
@@ -9,8 +9,22 @@ import qualified Data.Map.Strict as M
 import qualified Data.Array as A
 import qualified Data.Set as S
 import Data.Maybe (catMaybes)
+-- import qualified Data.UnionFind.IntMap as UF
+import qualified Color
+import Control.Monad
 
-type BoxColor = Int
+-- data GameState board = Unsolvable | Solved board | InProgress board
+--     deriving (Show)
+
+-- instance Monad GameState where
+--     board >>= transform = case board of
+--         InProgress b -> transform b
+--         other -> other
+--     return b -> InProgress b
+
+    
+
+type BoxColor = IntMap
 
 data LineType = L | X deriving (Eq, Enum, Show)
 
@@ -18,14 +32,22 @@ type NumAdj = Maybe Int
 
 type Coord = (Int, Int) -- Row, col from the top left.
 
-data Slitherlink = Slither { size :: (Int, Int) -- row, col of block rows, not points
+data SlitherBoard = Board { size :: (Int, Int) -- row, col of block rows
+                          , numbers :: A.Array Coord NumAdj
+                          } deriving (Show, Eq)
+a
+data GameState = GameState { board :: SlitherBoard
                            , lines :: M.Map Line (Maybe LineType)
-                           , boxes :: A.Array Coord (Maybe BoxColor)
-                           , numbers :: A.Array Coord NumAdj
-                           } deriving (Show, Eq)
+                           -- , boxes :: A.Array Coord (Maybe BoxColor)
+                           , colors :: A.Array Coord (UF.Point ())
+                           , colormap :: UF.PointSupply
+                           , blue :: UF.Point ()
+                           , yellow :: UF.Point ()
+                           , recentlyUpdated :: [Element]
+                           } deriving (Show)
 
-data Update = BoxUpdate(Box, BoxColor)
-            | LineUpdate(Line, LineType)
+-- data Update = BoxUpdate(Box, BoxColor)
+--             | LineUpdate(Line, LineType)
 
 --  * - * - * - *
 --  | # | # | # |
@@ -34,10 +56,12 @@ data Update = BoxUpdate(Box, BoxColor)
 --  * - * - * - *
 --  | # | # | # |
 --  * - * - * - *
+
 
 newtype Box = Box Coord deriving (Eq, Show)
 newtype Line = Line (Coord, Coord) deriving (Eq, Show, Ord)
 newtype Point = Point Coord deriving (Eq, Show)
+data Element = ABox (Box) | ALine (Line) deriving (Show)
 
 getLines :: Slitherlink -> [Line]
 getLines = M.keys . Slither.lines
@@ -49,26 +73,10 @@ getPoints :: Slitherlink -> [Point]
 getPoints s = map Point $ A.range ((0, 0), size s)
 
 canonicalLine :: Point -> Point -> Line
-canonicalLine (Point p1) (Point p2)
+canonicalLine (Point p1) (Point p2) =
     | p1 <= p2  = Line (p1, p2)
     | otherwise = Line (p2, p1)
 
--- data Adj a = Adj { above :: a
---                  , below :: a
---                  , left :: a
---                  , right :: a
---                  } deriving (Eq, Show)
-
--- instance Functor Adj where
---     fmap f (Adj up dn l r) = Adj (f up) (f dn) (f l) (f r)
-
-checkBounds :: Coord -> Coord -> Coord -> Maybe Coord
-checkBounds (loRow, loCol) (hiRow, hiCol) (row, col)
-    | row < loRow  = Nothing
-    | row >= hiRow = Nothing
-    | col < loCol  = Nothing
-    | col >= hiCol = Nothing
-    | otherwise    = Just (row, col)
 
 coordNeighbors :: Coord -> Coord -> Coord -> [Coord]
 coordNeighbors lo hi (row, col) = catMaybes $ map (checkBounds lo hi) neighbors
@@ -111,8 +119,6 @@ boxAdjBoxes s (Box coord) = map Box neighbors
     where
         neighbors = coordNeighbors (0, 0) (size s) coord
 
--- boxGetNum :: Slitherlink -> Box -> NumAdj
--- boxGetNum s (Box b) = (numbers s) A.! b
 
 --(above/left, down/right)
 lineAdjBoxes :: Slitherlink -> Line -> (Maybe Box, Maybe Box)
@@ -133,31 +139,43 @@ boxNum s (Box coord) = (numbers s) A.! coord
 -- boxGetAdjColors :: Slitherlink -> Box -> Adj Color
 -- boxGetAdjColors s = fmap (maybe Yellow $ boxColor s) . boxGetAdjBoxes s
 
-makeSlither :: Coord -> [(Coord, Int)] -> Slitherlink
-makeSlither (rows, cols) nums =
+makeSlitherBoard :: Coord -> [(Coord, Int)] -> SlitherBoard
+makeSlitherBoard (rows, cols) nums =
+    SlitherBoard { size = (rows, cols)
+                 , numbers = A.array ((0, 0), (rows-1, cols-1)) nums
+                 }
+
+
+
+newGame :: SlitherBoard -> GameState
+newGame sb = 
     let
+        accumColors coord (state, points) =
+            let newstate, nextpoint = fresh state coord
+            in (newstate, points:nextpoint)
+
+        indices = A.indices $ 
+        colors, colorslist = foldr accumColors UF.newPointSupply $ A.indices 
         maxBoxes = (rows-1, cols-1)
         boxColors = A.listArray ((0, 0), maxBoxes) (repeat Nothing)
-        emptyBoxNumbers = A.listArray ((0, 0), maxBoxes) (repeat Nothing)
+        -- emptyBoxNumbers = A.listArray ((0, 0), maxBoxes) (repeat Nothing)
         boxNumList = map (fmap Just) nums
         boxNumbers = A.accum (const id) emptyBoxNumbers boxNumList
         indices = A.range ((0, 0), (rows, cols))
+
         lineList = ([Line (p, (r+1, c)) | p@(r, c) <- indices, r < rows]
                  ++ [Line (p, (r, c+1)) | p@(r, c) <- indices, c < cols])
         lineTypes = M.fromList (zip lineList (repeat Nothing))
     in
-        Slither { size = (rows, cols)
-                , lines = lineTypes
-                , boxes = boxColors
-                , numbers = boxNumbers
-                }
+        GameState { board = sb
+                  , lines = lineTypes
+                  , colors = undefined
+                  , colormap = undefined
+                  , blue = undefined
+                  , yellow = undefined
+                  ,recentlyUpdated = undefined
+                  }
 
--- intToBoxNum :: Int -> NumAdj
--- intToBoxNum 0 = Zero
--- intToBoxNum 1 = One
--- intToBoxNum 2 = Two
--- intToBoxNum 3 = Three
--- intToBoxNum _ = error "why"
 
 getLineType :: Slitherlink -> Line -> Maybe LineType
 getLineType s l = (Slither.lines s) M.! l
