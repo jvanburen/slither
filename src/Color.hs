@@ -50,23 +50,40 @@ lookupOpposite cmap c = M.lookup (coord cmap $ repr cmap c) $ opposites cmap
 areOpposite :: ColorMap -> Color -> Color -> Bool
 areOpposite cmap c = equiv cmap (lookupOpposite cmap c)
 
--- Internal use only
--- When two colors are unioned, a key in opposites might not be a repr
---  anymore, so this restores the invariant that the keys are reprs
-fixOpposite :: ColorMap -> Color -> ColorMap
-fixOpposite cmap c =  
-    case M.lookup (coord cmap c) $ opposites cmap of
-        Nothing -> cmap -- no need to update anything
-        Just val -> 
-            let
-                opps = opposites cmap
-                newOpps = M.insert (repr cmap c) val $ M.delete c opps
-            in cmap { opposites = newOpps }
+-- changes the key of a key value pair (if it exists)
+changeKey :: CoordColorMap -> Coord -> Coord -> CoordColorMap
+changeKey ccmap kOld kNew =
+    case M.updateLookupWithKey (const $ const Nothing) kOld ccmap of
+        (Nothing, _) -> ccmap
+        (Just val, newmap) -> M.insert kNew val newmap
+
+-- -- Internal use only
+-- -- When two colors are unioned, a key in opposites might not be a repr
+-- --  anymore, so this restores the invariant that the keys are reprs
+-- fixOpposite :: ColorMap -> Color -> ColorMap
+-- fixOpposite cmap c =  
+--     case M.lookup (coord cmap c) $ opposites cmap of
+--         Nothing -> cmap -- no need to update anything
+--         Just val -> 
+--             let
+--                 opps = opposites cmap
+--                 newOpps = M.insert (repr cmap c) val $ M.delete c opps
+--             in cmap { opposites = newOpps }
 
 -- Requires the colors to be union-able (not opposite)
 unionColorsUnsafe :: ColorMap -> Color -> Color -> ColorMap
-unionColorsUnsafe cmap c1 c2 = let
-        
+unionColorsUnsafe cmap c1 c2 =
+    if equiv cmap c1 c2 
+        then cmap
+    else let
+        oldr1, oldr2 = coord cmap $ repr cmap c1, coord cmap $ repr cmap c2
+        combined = union cmap c1 c2
+        newr1 = coord cmap $ UF.repr combined c1
+        newr2 = coord cmap $ UF.repr combined c2
+        opps1 = changeKey (opposites cmap) oldr1 newr1
+        opps2 = changeKey opps1 oldr2 newr2
+    in
+        cmap { ps = combined, opposites = opps2 }
 
 
 -- Mark 2 boxes as having opposite colors
@@ -81,8 +98,10 @@ markOpposite cmap c1 c2 =
         then Nothing  -- Contradiction
     else let
         r1, r2 = repr cmap c1, repr cmap c2
-        cmap2 = cmap { ps = union cmap r1 r2 }
-        cmap' = fixOpposite
+        cmap2 = fixOpposite (cmap { ps = union cmap r1 r2 }) r1
+        cmap3 = fixOpposite (cmap2) r2
+    in
+        cmap3
 
 -- need to union c1 and the opposite of c2
 -- need to union c2 and the opposite of c1
@@ -107,7 +126,7 @@ union cmap c1 c2 =
         sameColors 
 
     -- need to fix opposites
-    
+
 
 
 
