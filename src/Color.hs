@@ -11,11 +11,11 @@ newtype Color = UF.Point Coord
 -- map from repr points to non-repr points (only stores points with opposites)
 type CoordColorMap = M.Map Coord Colored
 
-data ColorMap = ColorMap { ps :: UF.PointSource
-                         , points :: CoordColorMap
-                         , blue :: Color -- sentinal coordinate value
-                         , yellow :: Color  -- sentinal coordinate value
-                         , opposites :: CoordColorMap
+data ColorMap = ColorMap { _ps :: UF.PointSource
+                         , _points :: CoordColorMap
+                         , _blue :: Color -- sentinal coordinate value
+                         , _yellow :: Color  -- sentinal coordinate value
+                         , _opposites :: CoordColorMap
                          }
 
 -- Constructor
