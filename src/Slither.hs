@@ -4,7 +4,13 @@
 module Slither (GameState,
     joinColors, sepColors, setLineTo, setLinesTo,
     areSameColor, areOppColor, isBlue, isYellow,
-    getLines, getBoxes, getPoints, Rule,
+    getLines, getBoxes, getPoints, Rule, lineType,
+    Line, Box, Point, getBox, getPoint, boxNum,
+    lineIncidentPoints, lineIncidentBoxes,
+    pointAdjPoints, pointIncidentLines,
+    boxAdjBoxes, boxIncidentLines,
+    boxColor, boxAdjColors, lineIncidentColors,
+    LineType(..), Update(..)
     ) where
 
 import qualified Data.Map.Strict as M
@@ -76,21 +82,21 @@ insertUpdate update (gs@GS{pendingUpdates}) =
 
 -- public interface for the updates
 -- TODO: possible optimization: checking for contradictions here also
-joinColors :: Color -> Color -> GS -> GS
-joinColors c1 c2 = insertUpdate (JoinColors c1 c2)
+joinColors :: Color -> Color -> GS -> Maybe GS
+joinColors c1 c2 = Just . insertUpdate (JoinColors c1 c2)
 
 
-sepColors :: Color -> Color -> GS ->  GS
-sepColors c1 c2 = insertUpdate (SepColors c1 c2)
+sepColors :: Color -> Color -> GS -> Maybe GS
+sepColors c1 c2 = Just . insertUpdate (SepColors c1 c2)
     -- gs{pendingUpdates=S.insert (SepColors c1 c2) pendingUpdates}
 
 
-setLineTo :: LineType -> Line -> GS -> GS
-setLineTo ltype l = insertUpdate (SetLineTo ltype l)
+setLineTo :: LineType -> Line -> GS -> Maybe GS
+setLineTo ltype l = Just . insertUpdate (SetLineTo ltype l)
 
 
-setLinesTo :: (Foldable t) => LineType -> t Line -> GS -> GS
-setLinesTo lt = flip $ foldr (insertUpdate . SetLineTo lt)
+setLinesTo :: (Foldable t) => LineType -> t Line -> GS -> Maybe GS
+setLinesTo lt ls gs = Just $ foldr (insertUpdate . SetLineTo lt) gs ls
 
 
 -- data Update = BoxUpdate(Box, BoxColor)
@@ -114,9 +120,7 @@ newtype Point = Point { getPoint :: Coord }
 data Element = ABox (Box) | ALine (Line) deriving (Show)
 
 
-
-
--- Color interface to the Game State
+-- Color interface to the GameState
 -- equiv :: ColorMap -> Color -> Color -> Bool
 -- lookupOpposite :: ColorMap -> Color -> Maybe Color
 -- areOpposite :: ColorMap -> Color -> Color -> Bool
@@ -132,7 +136,6 @@ areOppColor (GS{colors}) = C.areOpposite colors
 
 isBlue :: GS -> Color -> Bool
 isBlue (GS{colors}) = C.isBlue colors
-
 
 isYellow :: GS -> Color -> Bool
 isYellow (GS{colors}) = C.isYellow colors
@@ -152,7 +155,7 @@ boxBounds = A.bounds . board
 
 pointBounds :: GS -> (Coord, Coord)
 pointBounds gs = (c1, (r2+1, c2+1))
-    where 
+    where
         (c1, (r2, c2)) = boxBounds gs
 
 canonicalLine :: Point -> Point -> Line
@@ -174,6 +177,12 @@ lineIncidentPoints :: Line -> (Point, Point)
 lineIncidentPoints (Line (p1, p2)) = (Point p1, Point p2)
 
 
+lineIncidentColors :: GS -> Line -> (C.Color, C.Color)
+lineIncidentColors (GS{colors}) l =
+    let (b1, b2) = unsafeLineIncidentBoxCoords l
+    in (C.getColor colors b1, C.getColor colors  b2)
+
+
 pointAdjPoints :: GS -> Point -> Adj (Maybe Point)
 pointAdjPoints gs = fmap validate . coordAdj . getPoint
     where
@@ -187,8 +196,8 @@ pointAdjPoints gs = fmap validate . coordAdj . getPoint
 
 
 pointIncidentLines :: GS -> Point -> Adj (Maybe Line)
-pointIncidentLines gs (Point c) = 
-    fmap (fmap toLine . validate) $ coordAdj c
+pointIncidentLines gs (Point c) =
+    (fmap toLine . validate) <$> coordAdj c
     where
         validate = validateCoord $ pointBounds gs
         toLine c2
@@ -220,15 +229,19 @@ maybeValidBox (GS{board}) c =
         then Just $ Box c
         else Nothing
 
+unsafeLineIncidentBoxCoords (Line((r1, c1), (r2, c2))) =
+    let
+        prev = if r1 == r2 then (r1 - 1, c1) else (r1, c1 - 1)
+        next = (r1, c1)
+    in (prev, next)
 
 --(above/left, down/right)
 lineIncidentBoxes :: GS -> Line -> (Maybe Box, Maybe Box)
-lineIncidentBoxes gs (Line((r1, c1), (r2, c2))) =
+lineIncidentBoxes gs l =
     let
-        prev = if r1 == r2 then (r1 - 1, c1) else (r1, c1-1)
-        next = (r1, c1)
+        (prev, next) = unsafeLineIncidentBoxCoords l
         check = validateCoord $ boxBounds gs
-    in (fmap Box $ check prev, fmap Box $ check next)
+    in (Box <$> check prev, Box <$> check next)
 
 
 boxAdjBoxes :: GS -> Box -> Adj (Maybe Box)
@@ -245,14 +258,21 @@ boxNum :: GS -> Box -> NumAdj
 boxNum (GS{board}) = (board A.!) . getBox
 
 
+lineType :: GS -> Line -> Maybe LineType
+lineType s l = (Slither.lines s) M.! l
+
+
 -- Replaces Off-the-grid values with yellow
 boxAdjColors :: GS -> Box -> Adj Color
 boxAdjColors (gs@GS{colors}) =
-    fmap (maybe (C.getYellow colors) $ boxColor gs) . boxAdjBoxes gs
+    fmap (C.getColor colors) . coordAdj . getBox
 
+-- boxAdjLineAndColor :: GS -> Box -> Adj (Line, Color)
+-- boxAdjLineAndColor gs b =
+--     Adj.zip (boxIncidentLines gs b) (boxAdjColor gs b)
 
 makeSlitherBoard :: Coord -> [(Coord, Int)] -> SlitherBoard
-makeSlitherBoard (rows, cols) = 
+makeSlitherBoard (rows, cols) =
     A.accumArray (\_ y -> Just y) Nothing ((0, 0), (rows-1, cols-1))
 
 
@@ -271,10 +291,3 @@ newGame sb =
            , paths = undefined
            , pendingUpdates = D.empty
            }
-
-
-getLineType :: GS -> Line -> Maybe LineType
-getLineType s l = (Slither.lines s) M.! l
-
-
-

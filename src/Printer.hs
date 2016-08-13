@@ -1,10 +1,10 @@
-module Printer (showSlitherlink) where
+module Printer (showGameState) where
 
 import qualified Data.Map.Strict as M
 import System.Console.ANSI
 import qualified System.Console.ANSI as ANSI
 import Data.Maybe
-
+import Adj
 import Slither
 -- import Logic (maybeBoxColor)
 
@@ -26,9 +26,13 @@ import Slither
 
 data LineOrientation = H | V deriving (Show, Eq)
 
-getLineOrientation :: Slither.Line -> LineOrientation
-getLineOrientation (Line((r1, _), (r2, _))) =
-    if r1 == r2 then H else V
+getLineOrientation :: GameState -> Slither.Line -> LineOrientation
+getLineOrientation gs l =
+    let 
+        (p1, p2) = lineIncidentPoints l
+        adj = pointAdjPoints gs p1
+    in
+        if right adj == Just p2 then H else V
 
 bluebox = [SetColor Background Vivid ANSI.Cyan]
 yellowbox = [SetColor Background Vivid ANSI.Yellow]
@@ -48,48 +52,56 @@ pad n = if n < 10 then (show n) ++ " " -- (bignums !! n):" "
     else (show n)
 
 showPoint :: GameState -> Point -> IO ()
-showPoint s (p@(Point(r, c))) = do
+showPoint gs p = do
+    let (r, c) = getPoint p
     setCursorPosition (2*r) (4*c)
     setSGR bg
     putStr "\xFF65 " -- for now
 
 showBox :: GameState -> Slither.Box -> IO ()
-showBox s b@(Box(r, c)) = do
+showBox gs b = do
+    let (r, c) = getBox b
     setCursorPosition (2*r+1) (4*c+2)
-    setSGR (case (boxColor s b) of
-        Just Slither.Blue -> bluebox
-        Just Slither.Yellow -> yellowbox
-        Nothing -> bg)
-    putStr (maybe "  " pad $ boxNum s b)
-showLine :: Slitherlink -> Slither.Line -> IO ()
-showLine s (l@(Line((r, c), _))) =
+    let bc = boxColor gs b
+    setSGR (if isBlue gs bc
+                then bluebox
+            else if isYellow gs bc
+                then yellowbox
+            else
+                bg
+            )
+    putStr (maybe "  " pad $ boxNum gs b)
+showLine :: GameState -> Slither.Line -> IO ()
+showLine gs l =
     let
-        hv = getLineOrientation l
+        (p1, p2) = lineIncidentPoints l
+        (r, c) = getPoint p1
+        hv = getLineOrientation gs l
         (r', c') = case hv of
             H -> (2*r, 4*c + 2)
             V -> (2*r + 1, 4*c)
-        -- (lbox, rbox) = lineAdjBoxes s l
-        -- lcolor = maybeBoxColor s lbox
-        -- rcolor = maybeBoxColor s rbox
+        -- (lcolor, rcolor) = lineIncidentColors gs l
+        --  = boxColor gs lbox
+        -- rcolor = boxColor gs rbox
     in do
     setCursorPosition r' c'
     setSGR bg
 
-    putStr (case (hv, getLineType s l) of
+    putStr (case (hv, lineType gs l) of
         (_, Nothing) -> "  "
         (_, Just X) -> x
         (H, _) -> hline
         (V, _) -> vline)
 
 showGameState :: GameState -> IO()
-showGameState s = do
+showGameState gs = do
     clearScreen
     setCursorPosition 0 0
     setSGR bg
     setSGR [SetColor Foreground Vivid Black]
-    mapM_ (showPoint s) $ getPoints s
-    mapM_ (showBox s) $ getBoxes s
-    mapM_ (showLine s) $ getLines s
+    mapM_ (showPoint gs) $ getPoints gs
+    mapM_ (showBox gs) $ getBoxes gs
+    mapM_ (showLine gs) $ getLines gs
     cursorDownLine 2
     setCursorColumn 0
     setSGR [Reset]

@@ -2,8 +2,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
 module Color (ColorMap, newColorMap, areOpposite, lookupOpposite, equiv,
-              markSame, markOpposite, getColor, isBlue, isYellow, Color, 
-              getYellow) where
+              markSame, markOpposite, getColor, isBlue, isYellow, Color) where
 
 import qualified Data.UnionFind.IntMap as UF
 import qualified Data.Map.Strict as M
@@ -89,7 +88,7 @@ getColor (ColorMap{points, yellow}) coord =
     else
         yellow
 
-getYellow = yellow
+-- getYellow = yellow
 
 isYellow :: ColorMap -> Color -> Bool
 isYellow cmap = equiv cmap (yellow cmap)

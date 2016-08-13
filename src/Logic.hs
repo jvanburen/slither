@@ -1,8 +1,9 @@
 module Logic where
 
 import Slither
+import Adj
 import qualified Color as Clr
-import Data.Maybe (maybe)
+import Data.Maybe (maybe, fromJust, catMaybes)
 
 -- noUpdates :: Slither.Updates
 -- noUpdates = []
@@ -20,8 +21,8 @@ import Data.Maybe (maybe)
 -- unsolvedEdges :: Slitherlink -> [Edge]
 -- unsolvedEdges = filter (\l -> getLineType l == None) . getLines
 
--- isLineType :: Slitherlink -> Maybe LineType -> Line -> Bool
--- isLineType s typ l = (getLineType s l == typ)
+isLineType :: GameState -> Maybe LineType -> Line -> Bool
+isLineType gs = flip ((==) . lineType gs)
 
 -- isBoxColor :: Slitherlink -> Maybe BoxColor -> Box -> Bool
 -- isBoxColor s col b = (boxColor s b == col)
@@ -33,22 +34,23 @@ import Data.Maybe (maybe)
 -- setBoxesTo col = updateBoxes . map (\box -> (box, col))
 
 
--- setOppColors
---     acts on GS and doesn't add updates? or does
+-- sepColors
+--     acts on GameState and doesn't add updates? or does
 -- addUpdates
---     acts on GS also
+--     acts on GameState also
 
 -- oppColor Blue = Yellow
 -- oppColor Yellow = Blue
 
 lineColorRule :: Slither.Rule
-lineColorRule (SetLineTo line L) gs =
-    Just $ Slither.sepColors c1 c2 gs
-    where (c1, c2) = Slither.lineGetAdjColors gs line
-lineColorRule (SetLineTo line X) gs =
-    Just $ Slither.joinColors c1 c2 gs
-    where (c1, c2) = Slither.lineGetAdjColors gs line
-lineColorRule _ = Just
+lineColorRule (SetLineTo L line) gs = Slither.sepColors c1 c2 gs
+    where 
+        (c1, c2) = Slither.lineIncidentColors gs line
+lineColorRule (SetLineTo X line) gs =
+    Slither.joinColors c1 c2 gs
+    where 
+        (c1, c2) = Slither.lineIncidentColors gs line
+lineColorRule _ gs = Just gs
 
 -- commented
     -- lineColorRule :: Slitherlink -> Line -> Slither.Updates
@@ -104,40 +106,42 @@ lineColorRule _ = Just
 -- setLinesTo :: (Foldable t) => LineType -> GameState -> t Slither.Line -> GameState
 -- setLinesTo lt = foldr (insertUpdate . SetLineTo lt)
 
--- getOtherBox b (b1, b2) = if b == b1 then b2 else b1
+getOther b (b1, b2) = if b == b1 then b2 else b1
 
-innerBoxLineRule :: Slither.Box -> GameState -> Maybe GameState
-innerBoxLineRule box gs = case (boxNum gs box) of
+innerBoxLineRule :: Maybe Slither.Box -> GameState -> Maybe GameState
+innerBoxLineRule box gs = case box of
     Nothing -> Just gs
-    Just num -> let
-            incident = toList $ Slither.boxIncidentLines gs box
-            lines = filter (isLineType gs $ Just L) incident
-            -- xs = filter (isLineType gs $ Just X) incident
-            tbds = filter (isLineType gs Nothing) incident
-        in
-            if length tbds == 0
-            || length lines + length tbds < num 
-                then Just gs
-            else if length lines + length tbds == num
-                then Just $ setLinesTo L gs tbds
-            else if length lines == num
-                then Just $ setLinesTo X gs tbds
-            else case tbds of
-                [b1, b2] -> Just $ Slither.sepColors (boxColor gs b1) (boxColor gs b2)
-                _ -> Just gs
+    Just box -> case (boxNum gs box) of
+        Nothing -> Just gs
+        Just num -> let
+                incident = toList $ Slither.boxIncidentLines gs box
+                lines = filter (isLineType gs $ Just L) incident
+                tbds = filter (isLineType gs Nothing) incident
+                numLines = length lines
+                numTbds = length tbds
+            in
+                if numTbds == 0
+                    then Just gs
+                else if numLines + numTbds < num 
+                    then Nothing
+                else if numLines + numTbds == num
+                    then Slither.setLinesTo L tbds gs
+                else if numLines == num
+                    then Slither.setLinesTo X tbds gs
+                else case tbds of
+                    [l1, l2] -> let
+                        incident2 = zip incident $ toList $ boxAdjColors gs box
+                        c1 = fromJust $ lookup l1 incident2
+                        c2 = fromJust $ lookup l2 incident2
+                        in Slither.sepColors c1 c2 gs
+                    _ -> Just gs
 
 boxLineRule :: Slither.Rule
--- boxLineRule (SetLineTo _ line) gs = 
---     let 
---         (b1, b2) = Slither.lineGetAdjBoxes gs line
---         f1 = maybe Just innerboxLineRule b1
---         f2 = maybe Just innerboxLineRule b2
---     in
---         f1 >>= f2 $ gs
 boxLineRule (SetLineTo _ line) gs =         
-    innerboxLineRule b1 gs >>= innerboxLineRule b2
-    where (b1, b2) = Slither.lineGetAdjBoxes gs line
-boxLineRule _ = Just
+    innerBoxLineRule b1 gs >>= innerBoxLineRule b2
+    where 
+        (b1, b2) = lineIncidentBoxes gs line
+boxLineRule _ gs = Just gs
 
 -- Old code
     -- adjacent 3s rule
@@ -176,23 +180,30 @@ boxLineRule _ = Just
 lineContinue :: Slither.Point -> GameState -> Maybe GameState
 lineContinue p gs = 
     let
-        incident = pointIncidentLines gs p
+        incident = catMaybes $ toList $ pointIncidentLines gs p
         ls = filter (isLineType gs $ Just L) incident
         xs = filter (isLineType gs $ Just X) incident
         tbds = filter (isLineType gs Nothing) incident
     in
         case (length ls, tbds) of
-            (2, _) -> Just $ Slither.setLinesTo X tbds gs
-            (1, [line]) -> Just $ Slither.setLineTo L line gs
-            (0, [line]) -> Just $ Slither.setLineTo
-            (1, _) | (0, _) -> Just GC
+            (2, _) ->      Slither.setLinesTo X tbds gs
+            (1, [line]) -> Slither.setLineTo L line gs
+            (0, [line]) -> Slither.setLineTo X line gs
+            (1, _) -> Just gs
+            (0, _) -> Just gs
             _ -> Nothing
-            _ -> Just GS
 
 lineContinueRule :: Slither.Rule
 lineContinueRule (SetLineTo _ line) gs = 
     lineContinue p1 gs >>= lineContinue p2
-    where (p1, p2) = lineIncidentPoints line gs
+    where (p1, p2) = lineIncidentPoints line 
+lineContinueRule _ gs = Just gs
+
+-- start3Rules :: Slither.Box -> GameState -> Maybe GameState
+-- start3Rules box gs =
+--     case boxNum gs box of
+--         Just 
+--     let
 
 
 
@@ -230,12 +241,12 @@ lineContinueRule (SetLineTo _ line) gs =
 --     Just numSolid -> (length $ boxIncidentLines s box) == numSolid + 1
 
 -- adjacent 3s rule
-separateMaxBoxes :: Slitherlink -> Line -> Slither.Updates
-separateMaxBoxes s line =
-    if isMaxBox s b1 && isMaxBox s b2
-        then updateLines [(line, L)]
-        else noUpdates
-    where (b1, b2) = lineAdjBoxes s line
+-- separateMaxBoxes :: Slitherlink -> Line -> Slither.Updates
+-- separateMaxBoxes s line =
+--     if isMaxBox s b1 && isMaxBox s b2
+--         then updateLines [(line, L)]
+--         else noUpdates
+--     where (b1, b2) = lineAdjBoxes s line
 
 -- 3 cornered by zero rule
 -- necessaryLines :: Slitherlink -> Point -> Slither.Updates

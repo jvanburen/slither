@@ -17,5 +17,9 @@ instance Foldable Adj where
     foldMap f (Adj a b c d) =
         f a `mappend` f b `mappend` f c `mappend` f d `mappend` mempty
 
+zip :: Adj a -> Adj b -> Adj (a, b)
+zip (Adj a1 a2 a3 a4) (Adj b1 b2 b3 b4) =
+    Adj (a1, b1) (a2, b2) (a3, b3) (a4, b4)
+
 -- getAdj :: (Int, Int) -> Adj (Int, Int)
 -- getAdj (r, c) = Adj
