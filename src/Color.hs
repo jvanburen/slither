@@ -1,4 +1,9 @@
-module Color (newColorMap, areOpposite, lookupOpposite, equiv, markSame, markOpposite) where
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+module Color (ColorMap, newColorMap, areOpposite, lookupOpposite, equiv,
+              markSame, markOpposite, getColor, isBlue, isYellow, Color, 
+              getYellow) where
 
 import qualified Data.UnionFind.IntMap as UF
 import qualified Data.Map.Strict as M
@@ -13,48 +18,54 @@ type CoordColorMap = M.Map Coord Color
 
 data ColorMap = ColorMap { ps :: UF.PointSupply Coord
                          , points :: A.Array Coord Color
-                         , blue :: Color -- sentinal coordinate value
+                         -- , blue :: Color -- sentinal coordinate value
                          , yellow :: Color  -- sentinal coordinate value
                          , opposites :: CoordColorMap
                          }
+instance Show ColorMap where
+    show c = "ColorMap"
 
-sentinalBlue = (-1, 0) :: Coord
+instance Show Color where
+    show c = "SomeColor"
+-- sentinalBlue = (-1, 0) :: Coord
 sentinalYellow = (0, -1) :: Coord
 
 -- Constructor
-newColorMap :: Coord -> Coord -> ColorMap
-newColorMap start end = 
+newColorMap :: (Coord, Coord) -> ColorMap
+newColorMap (start, end) = 
     let
         accumColors coord (state, points) = (newstate, point:points)
             where (newstate, point) = UF.fresh state coord
         indices = A.range (start, end)
         (ps, pointsList) = foldr accumColors (UF.newPointSupply, []) indices
-        (ps2, blue) = UF.fresh ps sentinalBlue
+        -- (ps2, blue) = UF.fresh ps sentinalBlue
+        -- (ps3, yellow) = UF.fresh ps2 sentinalYellow
         (ps3, yellow) = UF.fresh ps sentinalYellow
-        opps = M.fromList [(sentinalBlue, yellow), (sentinalYellow, blue)]
+        -- opps = M.fromList [(sentinalBlue, yellow), (sentinalYellow, blue)]
+        opps = M.empty
         pointsArray = A.listArray (start, end) pointsList
     in
-        ColorMap { ps = ps3
-                 , points = pointsArray
-                 , blue = blue
-                 , yellow = yellow
-                 , opposites = opps
-                 }
+        ColorMap ps3 -- ps
+                 pointsArray -- points
+                 -- blue -- blue
+                 yellow -- yellow
+                 opps -- opposites
+                 
 
 -- Wrapper for the lazy
 equiv :: ColorMap -> Color -> Color -> Bool
-equiv cmap = UF.equivalent (ps cmap)
+equiv (ColorMap{ps}) = UF.equivalent ps
 
 -- Wrapper for the lazy
 union :: ColorMap -> Color -> Color -> UF.PointSupply Coord
-union cmap = UF.union (ps cmap)
+union (ColorMap{ps}) = UF.union ps
 
 -- Wrapper for the lazy
 repr :: ColorMap -> Color -> Color
-repr cmap = UF.repr (ps cmap)
+repr (ColorMap{ps}) = UF.repr ps
 
 coord :: ColorMap -> Color -> Coord
-coord cmap = UF.descriptor (ps cmap)
+coord (ColorMap{ps}) = UF.descriptor ps
 
 -- Get a list of coordinates with the same color as given
 sameColors :: ColorMap -> Color -> [Coord]
@@ -71,12 +82,27 @@ areOpposite cmap c =  maybe False (equiv cmap c) . lookupOpposite cmap
 mapDeleteLookup = M.updateLookupWithKey removeItem
     where removeItem x y = Nothing
 
+getColor :: ColorMap -> Coord -> Color
+getColor (ColorMap{points, yellow}) coord =
+    if A.inRange (A.bounds points) coord
+        then points A.! coord
+    else
+        yellow
+
+getYellow = yellow
+
+isYellow :: ColorMap -> Color -> Bool
+isYellow cmap = equiv cmap (yellow cmap)
+
+isBlue :: ColorMap -> Color -> Bool
+isBlue cmap = areOpposite cmap (yellow cmap)
+
 -- Internal use only
 -- Combines two colors and gets rid of outgoing opposites
 -- also returns those opposites
 -- returns the new cmap, the opposite of the first, the opposite of the second
 internalUnionGetOpps :: ColorMap -> Color -> Color -> (ColorMap, Maybe Color, Maybe Color)
-internalUnionGetOpps (cmap@ColorMap{ps=ps, opposites=opps}) c1 c2 = 
+internalUnionGetOpps (cmap@ColorMap{ps, opposites=opps}) c1 c2 = 
     let
         r1 = UF.repr ps c1
         r2 = UF.repr ps c2
@@ -88,7 +114,7 @@ internalUnionGetOpps (cmap@ColorMap{ps=ps, opposites=opps}) c1 c2 =
         (cmap {ps=combined, opposites=opps2}, opp1, opp2)
 
 internalMarkOpposite :: ColorMap -> Color -> Color -> ColorMap
-internalMarkOpposite (cmap@ColorMap{ps=ps, opposites=opps}) c1 c2 = 
+internalMarkOpposite (cmap@ColorMap{ps, opposites=opps}) c1 c2 = 
     let
         r1 = UF.repr ps c1
         r2 = UF.repr ps c2

@@ -6,7 +6,7 @@ import qualified System.Console.ANSI as ANSI
 import Data.Maybe
 
 import Slither
-import Logic (maybeBoxColor)
+-- import Logic (maybeBoxColor)
 
 --  * - * - * - *
 --  | # | # | # |
@@ -43,17 +43,17 @@ bigX = "\x2573 " -- space included
 
 
 -- bignums = "\xFF10\xFF11\xFF12\xFF13\xFF14\xFF15\xFF16\xFF17\xFF18\xFF19"
-bignums = "0123456789"
+-- bignums = "0123456789"
 pad n = if n < 10 then (show n) ++ " " -- (bignums !! n):" "
     else (show n)
 
-showPoint :: Slitherlink -> Slither.Point -> IO ()
+showPoint :: GameState -> Point -> IO ()
 showPoint s (p@(Point(r, c))) = do
     setCursorPosition (2*r) (4*c)
     setSGR bg
     putStr "\xFF65 " -- for now
 
-showBox :: Slitherlink -> Slither.Box -> IO ()
+showBox :: GameState -> Slither.Box -> IO ()
 showBox s b@(Box(r, c)) = do
     setCursorPosition (2*r+1) (4*c+2)
     setSGR (case (boxColor s b) of
@@ -68,9 +68,9 @@ showLine s (l@(Line((r, c), _))) =
         (r', c') = case hv of
             H -> (2*r, 4*c + 2)
             V -> (2*r + 1, 4*c)
-        (lbox, rbox) = lineAdjBoxes s l
-        lcolor = maybeBoxColor s lbox
-        rcolor = maybeBoxColor s rbox
+        -- (lbox, rbox) = lineAdjBoxes s l
+        -- lcolor = maybeBoxColor s lbox
+        -- rcolor = maybeBoxColor s rbox
     in do
     setCursorPosition r' c'
     setSGR bg
@@ -81,8 +81,8 @@ showLine s (l@(Line((r, c), _))) =
         (H, _) -> hline
         (V, _) -> vline)
 
-showSlitherlink :: Slitherlink -> IO()
-showSlitherlink s = do
+showGameState :: GameState -> IO()
+showGameState s = do
     clearScreen
     setCursorPosition 0 0
     setSGR bg

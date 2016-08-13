@@ -1,17 +1,21 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
-module Slither (BoxColor(..), LineType(..), Slitherlink(..),
-    Box(..), Line(..), Point(..), Updates, update,
-    getLines, getBoxes, getPoints, pointAdjPoints, pointIncidentLines,
-    getLineType, makeSlither, boxNum, boxColor, lineAdjBoxes,
-    boxAdjBoxes, boxIncidentLines) where
+{-# LANGUAGE NamedFieldPuns #-}
+
+module Slither (GameState,
+    joinColors, sepColors, setLineTo, setLinesTo,
+    areSameColor, areOppColor, isBlue, isYellow,
+    getLines, getBoxes, getPoints, Rule,
+    ) where
 
 import qualified Data.Map.Strict as M
 import qualified Data.Array as A
 import qualified Data.Set as S
 import Data.Maybe (catMaybes)
--- import qualified Data.UnionFind.IntMap as UF
-import qualified Color
+import qualified Data.UnionFind.IntMap as UF
+import qualified Color as C
 import Control.Monad
+import Adj
+import qualified Data.Dequeue as D
 
 -- data GameState board = Unsolvable | Solved board | InProgress board
 --     deriving (Show)
@@ -22,29 +26,72 @@ import Control.Monad
 --         other -> other
 --     return b -> InProgress b
 
-    
 
-type BoxColor = IntMap
+-- We don't want to blow out the stack so instead of recursively updating the board,
+--  we have rules return a list of things to update
+-- Process:
+--  Pop something off the "list" (set) of things to update
+--  Actually apply the update the board (changing the things on the board)
+--  Run each relevant rule:
+--  Rules will take the game state and the most recent change and they will add their updates to the list in the state
+
+-- How do we know which rules are relevant?
+-- Good question
+-- Who better to decide what rule is relevant than the rule itself!
+-- Rules that aren't affected by the update simply act as const id
+-- Then we just fold over the list of partially applied rules. Easy.
+
+type Color = C.Color
+
+-- Takes a spot to look at and a game state
+-- Returns a game states with updates added via the appropriate methods
+-- Or Nothing if the game is unsolvable
+type Rule = Update -> GameState -> Maybe GameState
 
 data LineType = L | X deriving (Eq, Enum, Show)
 
-type NumAdj = Maybe Int
-
 type Coord = (Int, Int) -- Row, col from the top left.
 
-data SlitherBoard = Board { size :: (Int, Int) -- row, col of block rows
-                          , numbers :: A.Array Coord NumAdj
-                          } deriving (Show, Eq)
-a
-data GameState = GameState { board :: SlitherBoard
-                           , lines :: M.Map Line (Maybe LineType)
-                           -- , boxes :: A.Array Coord (Maybe BoxColor)
-                           , colors :: A.Array Coord (UF.Point ())
-                           , colormap :: UF.PointSupply
-                           , blue :: UF.Point ()
-                           , yellow :: UF.Point ()
-                           , recentlyUpdated :: [Element]
-                           } deriving (Show)
+type NumAdj = Maybe Int
+type SlitherBoard = A.Array Coord NumAdj
+
+data GameState = GS { board :: SlitherBoard
+                    , lines :: M.Map Line (Maybe LineType)
+                    , colors :: C.ColorMap
+                    , paths :: UF.PointSupply Line
+                    , pendingUpdates :: D.BankersDequeue Update
+                    } deriving (Show)
+type GS = GameState
+
+data Update = JoinColors Color Color
+            | SepColors Color Color
+            | SetLineTo LineType Line
+            deriving (Show)
+
+
+insertUpdate :: Update -> GS -> GS
+insertUpdate update (gs@GS{pendingUpdates}) =
+    gs{pendingUpdates=D.pushBack pendingUpdates update}
+
+
+-- public interface for the updates
+-- TODO: possible optimization: checking for contradictions here also
+joinColors :: Color -> Color -> GS -> GS
+joinColors c1 c2 = insertUpdate (JoinColors c1 c2)
+
+
+sepColors :: Color -> Color -> GS ->  GS
+sepColors c1 c2 = insertUpdate (SepColors c1 c2)
+    -- gs{pendingUpdates=S.insert (SepColors c1 c2) pendingUpdates}
+
+
+setLineTo :: LineType -> Line -> GS -> GS
+setLineTo ltype l = insertUpdate (SetLineTo ltype l)
+
+
+setLinesTo :: (Foldable t) => LineType -> t Line -> GS -> GS
+setLinesTo lt = flip $ foldr (insertUpdate . SetLineTo lt)
+
 
 -- data Update = BoxUpdate(Box, BoxColor)
 --             | LineUpdate(Line, LineType)
@@ -58,158 +105,176 @@ data GameState = GameState { board :: SlitherBoard
 --  * - * - * - *
 
 
-newtype Box = Box Coord deriving (Eq, Show)
-newtype Line = Line (Coord, Coord) deriving (Eq, Show, Ord)
-newtype Point = Point Coord deriving (Eq, Show)
+newtype Box = Box { getBox :: Coord }
+    deriving (Eq, Show, Ord)
+newtype Line = Line { getLine :: (Coord, Coord) }
+    deriving (Eq, Show, Ord)
+newtype Point = Point { getPoint :: Coord }
+    deriving (Eq, Show)
 data Element = ABox (Box) | ALine (Line) deriving (Show)
 
-getLines :: Slitherlink -> [Line]
+
+
+
+-- Color interface to the Game State
+-- equiv :: ColorMap -> Color -> Color -> Bool
+-- lookupOpposite :: ColorMap -> Color -> Maybe Color
+-- areOpposite :: ColorMap -> Color -> Color -> Bool
+-- getColor :: ColorMap -> Coord -> Color
+-- markSame :: ColorMap -> Color -> Color -> Maybe (ColorMap, [Coord])
+-- markOpposite :: ColorMap -> Color -> Color -> Maybe (ColorMap, [Coord])
+
+areSameColor :: GS -> Color -> Color -> Bool
+areSameColor (GS{colors}) = C.equiv colors
+
+areOppColor :: GS -> Color -> Color -> Bool
+areOppColor (GS{colors}) = C.areOpposite colors
+
+isBlue :: GS -> Color -> Bool
+isBlue (GS{colors}) = C.isBlue colors
+
+
+isYellow :: GS -> Color -> Bool
+isYellow (GS{colors}) = C.isYellow colors
+
+
+getLines :: GS -> [Line]
 getLines = M.keys . Slither.lines
 
-getBoxes :: Slitherlink -> [Box]
-getBoxes = map Box . A.indices . boxes
+getBoxes :: GS -> [Box]
+getBoxes = map Box . A.indices . board
 
-getPoints :: Slitherlink -> [Point]
-getPoints s = map Point $ A.range ((0, 0), size s)
+getPoints :: GS -> [Point]
+getPoints gs = map Point $ A.range $ pointBounds gs
+
+boxBounds :: GS -> (Coord, Coord)
+boxBounds = A.bounds . board
+
+pointBounds :: GS -> (Coord, Coord)
+pointBounds gs = (c1, (r2+1, c2+1))
+    where 
+        (c1, (r2, c2)) = boxBounds gs
 
 canonicalLine :: Point -> Point -> Line
-canonicalLine (Point p1) (Point p2) =
+canonicalLine (Point p1) (Point p2)
     | p1 <= p2  = Line (p1, p2)
     | otherwise = Line (p2, p1)
 
 
-coordNeighbors :: Coord -> Coord -> Coord -> [Coord]
-coordNeighbors lo hi (row, col) = catMaybes $ map (checkBounds lo hi) neighbors
-    where neighbors = [(row-1, col), (row+1, col), (row, col-1), (row, col+1)]
+coordAdj :: Coord -> Adj Coord
+coordAdj (r, c) = Adj (r-1, c) (r+1, c) (r, c-1) (r, c+1)
 
-pointAdjPoints :: Slitherlink -> Point -> [Point]
-pointAdjPoints s (Point coord) =
-    map Point neighbors
-    where 
-        neighbors = coordNeighbors (0, 0) (maxrow + 1, maxcol + 1) coord
-        (maxrow, maxcol) = size s
 
-pointAdjBoxes :: Slitherlink -> Point -> [Box]
-pointAdjBoxes s (Point (r, c)) = map Box $ catMaybes 
-    $ map (checkBounds (0, 0) (size s)) 
-    [(r, c), (r, c-1), (r-1, c), (r-1, c-1)]    
+validateCoord :: (Coord, Coord) -> Coord -> Maybe Coord
+validateCoord ((rmin, cmin), (rmax, cmax)) =
+    mfilter (\(r, c)-> rmin <= r && r <= rmax && cmin <= c && c <= cmax) . Just
 
-pointIncidentLines :: Slitherlink -> Point -> [Line]
-pointIncidentLines s p = map (canonicalLine p) $ pointAdjPoints s p
 
-boxIncidentLines :: Slitherlink -> Box -> [Line]
+lineIncidentPoints :: Line -> (Point, Point)
+lineIncidentPoints (Line (p1, p2)) = (Point p1, Point p2)
+
+
+pointAdjPoints :: GS -> Point -> Adj (Maybe Point)
+pointAdjPoints gs = fmap validate . coordAdj . getPoint
+    where
+        validate = fmap Point . validateCoord (pointBounds gs)
+
+
+-- pointAdjBoxes :: GS -> Point -> [Box]
+-- pointAdjBoxes s (Point (r, c)) = map Box $ catMaybes
+--     $ map (checkBounds (0, 0) (size s))
+--     [(r, c), (r, c-1), (r-1, c), (r-1, c-1)]
+
+
+pointIncidentLines :: GS -> Point -> Adj (Maybe Line)
+pointIncidentLines gs (Point c) = 
+    fmap (fmap toLine . validate) $ coordAdj c
+    where
+        validate = validateCoord $ pointBounds gs
+        toLine c2
+            | c <= c2   = Line (c, c2)
+            | otherwise = Line (c2, c)
+
+
+boxIncidentLines :: GS -> Box -> Adj Line
 boxIncidentLines s (Box (r, c)) =
     let
-        p1 = Point (r,c)
-        p2 = Point (r,c+1)
-        p3 = Point (r+1,c)
-        p4 = Point (r+1,c+1)
-        -- 1   2
-        --  BOX
-        -- 3   4
+        p1 = (r,c)
+        p2 = (r,c+1)
+        p3 = (r+1,c)
+        p4 = (r+1,c+1)
+        -- p1   p2
+        --   BOX
+        -- p3   p4
     in
-        [ (canonicalLine p1 p2)
-        , (canonicalLine p3 p4)
-        , (canonicalLine p1 p3)
-        , (canonicalLine p2 p4)
-        ]
+        Adj{ up    = Line (p1, p2)
+           , down  = Line (p3, p4)
+           , left  = Line (p1, p3)
+           , right = Line (p2, p4)
+           }
 
-boxAdjBoxes :: Slitherlink -> Box -> [Box]
-boxAdjBoxes s (Box coord) = map Box neighbors
-    where
-        neighbors = coordNeighbors (0, 0) (size s) coord
+
+maybeValidBox :: GS -> Coord -> Maybe Box
+maybeValidBox (GS{board}) c =
+    if A.inRange (A.bounds board) c
+        then Just $ Box c
+        else Nothing
 
 
 --(above/left, down/right)
-lineAdjBoxes :: Slitherlink -> Line -> (Maybe Box, Maybe Box)
-lineAdjBoxes s (Line((r1, c1), (r2, c2))) =
+lineIncidentBoxes :: GS -> Line -> (Maybe Box, Maybe Box)
+lineIncidentBoxes gs (Line((r1, c1), (r2, c2))) =
     let
         prev = if r1 == r2 then (r1 - 1, c1) else (r1, c1-1)
         next = (r1, c1)
-        check = checkBounds (0, 0) $ size s
+        check = validateCoord $ boxBounds gs
     in (fmap Box $ check prev, fmap Box $ check next)
 
-boxColor :: Slitherlink -> Box -> Maybe BoxColor
-boxColor s (Box coord) = (boxes s) A.! coord
 
-boxNum :: Slitherlink -> Box -> NumAdj
-boxNum s (Box coord) = (numbers s) A.! coord
+boxAdjBoxes :: GS -> Box -> Adj (Maybe Box)
+boxAdjBoxes gs = fmap validate . coordAdj . getBox
+    where
+        validate = fmap Box . validateCoord (boxBounds gs)
+
+
+boxColor :: GS -> Box -> C.Color
+boxColor (GS{colors}) = C.getColor colors . getBox
+
+
+boxNum :: GS -> Box -> NumAdj
+boxNum (GS{board}) = (board A.!) . getBox
+
 
 -- Replaces Off-the-grid values with yellow
--- boxGetAdjColors :: Slitherlink -> Box -> Adj Color
--- boxGetAdjColors s = fmap (maybe Yellow $ boxColor s) . boxGetAdjBoxes s
+boxAdjColors :: GS -> Box -> Adj Color
+boxAdjColors (gs@GS{colors}) =
+    fmap (maybe (C.getYellow colors) $ boxColor gs) . boxAdjBoxes gs
+
 
 makeSlitherBoard :: Coord -> [(Coord, Int)] -> SlitherBoard
-makeSlitherBoard (rows, cols) nums =
-    SlitherBoard { size = (rows, cols)
-                 , numbers = A.array ((0, 0), (rows-1, cols-1)) nums
-                 }
-
+makeSlitherBoard (rows, cols) = 
+    A.accumArray (\_ y -> Just y) Nothing ((0, 0), (rows-1, cols-1))
 
 
 newGame :: SlitherBoard -> GameState
-newGame sb = 
+newGame sb =
     let
-        accumColors coord (state, points) =
-            let newstate, nextpoint = fresh state coord
-            in (newstate, points:nextpoint)
-
-        indices = A.indices $ 
-        colors, colorslist = foldr accumColors UF.newPointSupply $ A.indices 
-        maxBoxes = (rows-1, cols-1)
-        boxColors = A.listArray ((0, 0), maxBoxes) (repeat Nothing)
-        -- emptyBoxNumbers = A.listArray ((0, 0), maxBoxes) (repeat Nothing)
-        boxNumList = map (fmap Just) nums
-        boxNumbers = A.accum (const id) emptyBoxNumbers boxNumList
-        indices = A.range ((0, 0), (rows, cols))
-
+        indices = A.indices sb
+        (_, (rows, cols)) = A.bounds sb
         lineList = ([Line (p, (r+1, c)) | p@(r, c) <- indices, r < rows]
                  ++ [Line (p, (r, c+1)) | p@(r, c) <- indices, c < cols])
         lineTypes = M.fromList (zip lineList (repeat Nothing))
     in
-        GameState { board = sb
-                  , lines = lineTypes
-                  , colors = undefined
-                  , colormap = undefined
-                  , blue = undefined
-                  , yellow = undefined
-                  ,recentlyUpdated = undefined
-                  }
+        GS { board = sb
+           , lines = lineTypes
+           , colors = C.newColorMap $ A.bounds sb
+           , paths = undefined
+           , pendingUpdates = D.empty
+           }
 
 
-getLineType :: Slitherlink -> Line -> Maybe LineType
+getLineType :: GS -> Line -> Maybe LineType
 getLineType s l = (Slither.lines s) M.! l
 
--- updateLines :: Slitherlink -> [(Line, LineType)] -> Slitherlink
--- updateLines s l = Slither { size=size s
---                           , lines = updated
---                           , boxes = boxes s
---                           , numbers = numbers s
---                           }
---     where
---         updates = M.fromList l
---         updated = M.union updates $ Slither.lines s
-
--- TODO: check no conflicts?
--- updateBoxes :: Slitherlink -> [(Box, Color)] -> Slitherlink
--- updateBoxes s l = Slither { size = size s
---                           , lines = Slither.lines s
---                           , boxes = newboxes s
---                           , numbers = numbers s
---                           }
---     where
---         newboxes = A.accum (const id) l $ boxes s
-
-update :: Slitherlink -> Updates -> Slitherlink
-update s (lineupdates, boxupdates) = let
-        updates = M.fromList $ map (fmap Just) lineupdates
-        newlines = M.union updates $ Slither.lines s
-        newboxes = boxes s A.// map (\(Box b, new) -> (b, Just new)) boxupdates
-    in
-         Slither { size = size s
-                 , lines = newlines
-                 , boxes = newboxes
-                 , numbers = numbers s
-                 }
 
 
