@@ -10,8 +10,8 @@ module Slither (GameState,
     pointAdjPoints, pointIncidentLines,
     boxAdjBoxes, boxIncidentLines,
     boxColor, boxAdjColors, lineIncidentColors,
-    LineType(..), Updated(..), reduceState
-    ) where
+    LineType(..), Updated(..), reduceState,
+    makeSlitherBoard, newGame) where
 import Prelude hiding (lines)
 import qualified Data.Map.Strict as M
 import qualified Data.Array as A

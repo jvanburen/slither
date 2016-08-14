@@ -10,8 +10,8 @@ graphSearch getAdj init = dfs getAdj S.empty init
 
 dfs :: (Ord a) => (a -> [a]) -> S.Set a -> a -> S.Set a
 dfs getAdj seen start = 
-	if start `S.member` seen then seen
-	else foldl' (dfs getAdj) (S.insert start seen) (getAdj start)
+    if start `S.member` seen then seen
+    else foldl' (dfs getAdj) (S.insert start seen) (getAdj start)
 
 -- data Adj a = Adj { above :: a
 --                  , below :: a
