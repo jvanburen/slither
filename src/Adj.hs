@@ -21,5 +21,9 @@ zip :: Adj a -> Adj b -> Adj (a, b)
 zip (Adj a1 a2 a3 a4) (Adj b1 b2 b3 b4) =
     Adj (a1, b1) (a2, b2) (a3, b3) (a4, b4)
 
+zip3 :: Adj a -> Adj b -> Adj c -> Adj (a, b, c)
+zip3 (Adj a1 a2 a3 a4) (Adj b1 b2 b3 b4) (Adj c1 c2 c3 c4) =
+    Adj (a1, b1, c1) (a2, b2, c2) (a3, b3, c3) (a4, b4, c4)
+
 -- getAdj :: (Int, Int) -> Adj (Int, Int)
 -- getAdj (r, c) = Adj

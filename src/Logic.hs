@@ -1,46 +1,19 @@
-module Logic where
+module Logic (theRules, start3Rules) where
 
 import Slither
 import Adj
 import qualified Color as Clr
-import Data.Maybe (maybe, fromJust, catMaybes)
+import Data.Maybe (maybe, fromJust, catMaybes, mapMaybe)
+import Control.Monad
 
--- noUpdates :: Slither.Updates
--- noUpdates = []
-
--- updateBoxes :: [(Box, BoxColor)] -> [Slither.Update]
--- updateBoxes = map BoxUpdate
-
--- updateLines :: [(Line, LineType)] -> [Slither.Updates]
--- updateLines = map LineUpdate
-
--- -- None will map to Yellow, to signify "off the board"
--- maybeBoxColor :: Slitherlink -> Maybe Box -> Maybe BoxColor
--- maybeBoxColor s = maybe (Just Yellow) (boxColor s)
-
--- unsolvedEdges :: Slitherlink -> [Edge]
--- unsolvedEdges = filter (\l -> getLineType l == None) . getLines
 
 isLineType :: GameState -> Maybe LineType -> Line -> Bool
 isLineType gs = flip ((==) . lineType gs)
-
--- isBoxColor :: Slitherlink -> Maybe BoxColor -> Box -> Bool
--- isBoxColor s col b = (boxColor s b == col)
-
--- setLinesTo :: LineType -> [Line] -> Slither.Updates
--- setLinesTo typ = updateLines . map (\line -> (line, typ))
-
--- setBoxesTo :: BoxColor -> [Box] -> Slither.Updates
--- setBoxesTo col = updateBoxes . map (\box -> (box, col))
-
 
 -- sepColors
 --     acts on GameState and doesn't add updates? or does
 -- addUpdates
 --     acts on GameState also
-
--- oppColor Blue = Yellow
--- oppColor Yellow = Blue
 
 lineColorRule :: Slither.Rule
 lineColorRule (SetLineTo L line) gs = Slither.sepColors c1 c2 gs
@@ -81,32 +54,29 @@ lineColorRule _ gs = Just gs
     --                 else error $ (show mc1) ++ (show mc2) ++ "unsolvable slitherlink"
 
 -- make more general!
--- change type to (Maybe Int) I guess
--- boxLineRule :: Slitherlink -> Box -> Slither.Updates
--- boxLineRule s box = case (boxNum s box) of
---     Nothing -> noUpdates
---     Just num -> inferLines s box num
---     where
---         inferLines s box num = let
---             incident = boxIncidentLines s box
---             ls = filter (isLineType s $ Just L) incident
---             xs = filter (isLineType s $ Just X) incident
---             tbds = filter (isLineType s Nothing) incident
---             in
---                 if length tbds + length ls < num || length ls > num
---                     then error "boxlinerule: unsolvable slitherlink"
---                 else if length tbds + length ls == num
---                     then setLinesTo L tbds
---                 else if length ls == num
---                     then setLinesTo X tbds
---                 else noUpdates
+    -- change type to (Maybe Int) I guess
+    -- boxLineRule :: Slitherlink -> Box -> Slither.Updates
+    -- boxLineRule s box = case (boxNum s box) of
+    --     Nothing -> noUpdates
+    --     Just num -> inferLines s box num
+    --     where
+    --         inferLines s box num = let
+    --             incident = boxIncidentLines s box
+    --             ls = filter (isLineType s $ Just L) incident
+    --             xs = filter (isLineType s $ Just X) incident
+    --             tbds = filter (isLineType s Nothing) incident
+    --             in
+    --                 if length tbds + length ls < num || length ls > num
+    --                     then error "boxlinerule: unsolvable slitherlink"
+    --                 else if length tbds + length ls == num
+    --                     then setLinesTo L tbds
+    --                 else if length ls == num
+    --                     then setLinesTo X tbds
+    --                 else noUpdates
 
 {-_-}
 
--- setLinesTo :: (Foldable t) => LineType -> GameState -> t Slither.Line -> GameState
--- setLinesTo lt = foldr (insertUpdate . SetLineTo lt)
-
-getOther b (b1, b2) = if b == b1 then b2 else b1
+-- getOther b (b1, b2) = if b == b1 then b2 else b1
 
 innerBoxLineRule :: Maybe Slither.Box -> GameState -> Maybe GameState
 innerBoxLineRule box gs = case box of
@@ -139,7 +109,7 @@ innerBoxLineRule box gs = case box of
 boxLineRule :: Slither.Rule
 boxLineRule (SetLineTo _ line) gs =         
     innerBoxLineRule b1 gs >>= innerBoxLineRule b2
-    where 
+    where
         (b1, b2) = lineIncidentBoxes gs line
 boxLineRule _ gs = Just gs
 
@@ -162,20 +132,20 @@ boxLineRule _ gs = Just gs
     --             else noUpdates
 
 -- line continuing
--- lineContinueRule :: Slitherlink -> Point -> Slither.Updates
--- lineContinueRule s p = let
---     incident = pointIncidentLines s p
---     ls = filter (isLineType s $ Just L) incident
---     xs = filter (isLineType s $ Just X) incident
---     tbds = filter (isLineType s Nothing) incident
---     in
---         if length ls == 2
---             then setLinesTo X tbds
---         else if length ls == 1 && length tbds == 1
---             then setLinesTo L tbds
---         else if length ls > 2
---             then error "too many lines set"
---         else noUpdates
+    -- lineContinueRule :: Slitherlink -> Point -> Slither.Updates
+    -- lineContinueRule s p = let
+    --     incident = pointIncidentLines s p
+    --     ls = filter (isLineType s $ Just L) incident
+    --     xs = filter (isLineType s $ Just X) incident
+    --     tbds = filter (isLineType s Nothing) incident
+    --     in
+    --         if length ls == 2
+    --             then setLinesTo X tbds
+    --         else if length ls == 1 && length tbds == 1
+    --             then setLinesTo L tbds
+    --         else if length ls > 2
+    --             then error "too many lines set"
+    --         else noUpdates
 
 lineContinue :: Slither.Point -> GameState -> Maybe GameState
 lineContinue p gs = 
@@ -199,12 +169,66 @@ lineContinueRule (SetLineTo _ line) gs =
     where (p1, p2) = lineIncidentPoints line 
 lineContinueRule _ gs = Just gs
 
--- start3Rules :: Slither.Box -> GameState -> Maybe GameState
--- start3Rules box gs =
---     case boxNum gs box of
---         Just 
---     let
 
+start3Rules :: Slither.Box -> GameState -> Maybe GameState
+start3Rules box gs =
+    orthogonal3Rule box gs >>= diagonal3Rule box
+
+orthogonal3Rule :: Slither.Box -> GameState -> Maybe GameState
+orthogonal3Rule box gs =
+    if not $ is3 box then Just gs
+    else let
+        (Adj ub db lb rb)  = boxAdjBoxes gs box
+        (Adj ul dl ll rl) = boxIncidentLines gs box
+        actions = [ (ub, [dl, ul])
+                  , (lb, [ll, rl])
+                  , (db, [ul])
+                  , (rb, [ll])
+                  ]
+        relevantBoxes = filter (maybe False is3 . fst) actions
+    in
+        Slither.setLinesTo L (join $ map snd relevantBoxes) gs
+    where 
+        is3 b = boxNum gs b == Just 3
+
+diagonal3Rule :: Slither.Box -> GameState -> Maybe GameState
+diagonal3Rule box gs =
+    let
+        (Adj up_l down_l left_l right_l) = boxIncidentLines gs box
+        directions = [ (right, up)
+                     , (right, down)
+                     , (left, up)
+                     , (left, down)
+                     ]
+        corners = [ [left_l, down_l] 
+                  , [left_l, up_l]
+                  , [right_l, down_l]
+                  , [right_l, up_l]
+                  ]  -- order corresponds to `directions`
+        diagonals = map (moveDiag gs box) directions
+
+        which = zipWith (singleDiagonal gs) directions diagonals
+        ls = join $ map snd $ filter fst $ zip which corners
+    in 
+        setLinesTo L ls gs
+
+type MB = Maybe Box
+
+singleDiagonal :: GameState -> (Adj MB -> MB, Adj MB -> MB) -> MB -> Bool
+singleDiagonal gs dir Nothing = False
+singleDiagonal gs dir (Just box) = 
+    case boxNum gs box of
+        Just 3 -> True
+        Just 2 -> singleDiagonal gs dir (moveDiag gs box dir)
+        _ -> False
+
+
+moveDiag :: GameState -> Box -> (Adj MB -> MB, Adj MB -> MB) -> MB
+moveDiag gs box (f1, f2)  = do
+    box' <- f1 (boxAdjBoxes gs box)
+    f2 (boxAdjBoxes gs box')
+
+theRules = [lineColorRule, boxLineRule, lineContinueRule]
 
 
 -- for coloring: check adjacent blocks for same /diff color 

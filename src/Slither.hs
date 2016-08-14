@@ -10,9 +10,9 @@ module Slither (GameState,
     pointAdjPoints, pointIncidentLines,
     boxAdjBoxes, boxIncidentLines,
     boxColor, boxAdjColors, lineIncidentColors,
-    LineType(..), Update(..)
+    LineType(..), Updated(..), reduceState
     ) where
-
+import Prelude hiding (lines)
 import qualified Data.Map.Strict as M
 import qualified Data.Array as A
 import qualified Data.Set as S
@@ -52,7 +52,7 @@ type Color = C.Color
 -- Takes a spot to look at and a game state
 -- Returns a game states with updates added via the appropriate methods
 -- Or Nothing if the game is unsolvable
-type Rule = Update -> GameState -> Maybe GameState
+type Rule = Updated -> GameState -> Maybe GameState
 
 data LineType = L | X deriving (Eq, Enum, Show)
 
@@ -71,9 +71,13 @@ type GS = GameState
 
 data Update = JoinColors Color Color
             | SepColors Color Color
-            | SetLineTo LineType Line
+            | PutLine LineType Line
             deriving (Show)
 
+data Updated = JoinedColors Color [Box]
+             | SeparatedColors Color Color [Box]
+             | SetLineTo LineType Line
+             deriving (Show)
 
 insertUpdate :: Update -> GS -> GS
 insertUpdate update (gs@GS{pendingUpdates}) =
@@ -92,11 +96,39 @@ sepColors c1 c2 = Just . insertUpdate (SepColors c1 c2)
 
 
 setLineTo :: LineType -> Line -> GS -> Maybe GS
-setLineTo ltype l = Just . insertUpdate (SetLineTo ltype l)
+setLineTo ltype l = Just . insertUpdate (PutLine ltype l)
 
 
 setLinesTo :: (Foldable t) => LineType -> t Line -> GS -> Maybe GS
-setLinesTo lt ls gs = Just $ foldr (insertUpdate . SetLineTo lt) gs ls
+setLinesTo lt ls gs = Just $ foldr (insertUpdate . PutLine lt) gs ls
+
+
+reduceState :: [Rule] -> GameState -> Maybe GameState
+reduceState rules (gs@GS{pendingUpdates=puQ}) =
+    case D.popFront puQ of
+        Nothing -> Just gs
+        Just (up, upsQ) -> 
+            applyUpdate rules up (gs{pendingUpdates=upsQ})
+            >>= reduceState rules
+
+
+applyUpdate :: [Rule] ->  Update -> GameState -> Maybe GameState
+applyUpdate rules up@(JoinColors c1 c2) (gs@GS{colors}) = do
+    (colors, updated) <- C.markSame colors c1 c2
+    applyRules rules (JoinedColors c1 (map Box updated)) (gs{colors})
+applyUpdate rules up@(SepColors c1 c2) (gs@GS{colors}) = do
+    (colors, updated) <- C.markOpposite colors c1 c2
+    applyRules rules (SeparatedColors c1 c2 (map Box updated)) (gs{colors})
+applyUpdate rules up@(PutLine ltype line) (gs@GS{lines}) =
+    case lines M.! line of
+        Just ltype2 | ltype2 /= ltype -> Nothing
+        _ -> let lines' = M.insert line (Just ltype) lines
+            in applyRules rules (SetLineTo ltype line) $ gs{lines=lines'}
+                
+
+applyRules :: [Rule] -> Updated -> GS -> Maybe GS
+applyRules rules update gs = foldM (flip ($)) gs (($update) <$> rules)
+ 
 
 
 -- data Update = BoxUpdate(Box, BoxColor)
