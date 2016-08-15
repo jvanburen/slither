@@ -28,7 +28,7 @@ data LineOrientation = H | V deriving (Show, Eq)
 
 getLineOrientation :: GameState -> Slither.Line -> LineOrientation
 getLineOrientation gs l =
-    let 
+    let
         (p1, p2) = lineIncidentPoints l
         adj = pointAdjPoints gs p1
     in
@@ -80,12 +80,17 @@ showLine gs l =
         (r', c') = case hv of
             H -> (2*r, 4*c + 2)
             V -> (2*r + 1, 4*c)
-        -- (lcolor, rcolor) = lineIncidentColors gs l
-        --  = boxColor gs lbox
-        -- rcolor = boxColor gs rbox
+        (c1, c2) = lineIncidentColors gs l
+
     in do
     setCursorPosition r' c'
-    setSGR bg
+    if Slither.isBlue gs c1 then
+        if Slither.isBlue gs c2
+        then setSGR bluebox else setSGR bg
+    else if Slither.isYellow gs c1
+        then if Slither.isYellow gs c2
+            then setSGR yellowbox else setSGR bg
+    else setSGR bg
 
     putStr (case (hv, lineType gs l) of
         (_, Nothing) -> "  "
@@ -99,18 +104,9 @@ showGameState gs = do
     setCursorPosition 0 0
     setSGR bg
     setSGR [SetColor Foreground Vivid Black]
-    mapM_ (showPoint gs) $ getPoints gs
     mapM_ (showBox gs) $ getBoxes gs
     mapM_ (showLine gs) $ getLines gs
+    mapM_ (showPoint gs) $ getPoints gs
     cursorDownLine 2
     setCursorColumn 0
     setSGR [Reset]
-
-
-
-
-
-
-
-
-
