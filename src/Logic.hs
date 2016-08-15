@@ -84,11 +84,14 @@ innerBoxLineRule box gs = case box of
     Just box -> case (boxNum gs box) of
         Nothing -> Just gs
         Just num -> let
-                incident = toList $ Slither.boxIncidentLines box
+                incident = toList $ boxIncidentLines box
                 lines = filter (isLineType gs $ Just L) incident
                 tbds = filter (isLineType gs Nothing) incident
                 numLines = length lines
                 numTbds = length tbds
+
+                zipped = zip incident $ toList $ boxAdjColors gs box
+                tbdszipped = filter (isLineType gs Nothing . fst) zipped
             in
                 if numTbds == 0
                     then Just gs
@@ -98,11 +101,11 @@ innerBoxLineRule box gs = case box of
                     then Slither.setLinesTo L tbds gs
                 else if numLines == num
                     then Slither.setLinesTo X tbds gs
-                else case tbds of
-                    [l1, l2] -> let
-                        incident2 = zip incident $ toList $ boxAdjColors gs box
-                        c1 = fromJust $ lookup l1 incident2
-                        c2 = fromJust $ lookup l2 incident2
+                else case tbdszipped of
+                    [(l1, c1), (l2, c2)] -> let
+                        -- incident2 = zip incident $ toList $ boxAdjColors gs box
+                        -- c1 = fromJust $ lookup l1 incident2
+                        -- c2 = fromJust $ lookup l2 incident2
                         in Slither.sepColors c1 c2 gs
                     _ -> Just gs
 

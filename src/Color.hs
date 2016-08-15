@@ -8,6 +8,7 @@ import qualified Data.UnionFind.IntMap as UF
 import qualified Data.Map.Strict as M
 import qualified Data.Array as A
 import Data.Maybe
+import Debug.Trace
 
 type Coord = (Int, Int)
 type Color = UF.Point Coord
@@ -17,7 +18,6 @@ type CoordColorMap = M.Map Coord Color
 
 data ColorMap = ColorMap { ps :: UF.PointSupply Coord
                          , points :: A.Array Coord Color
-                         -- , blue :: Color -- sentinal coordinate value
                          , yellow :: Color  -- sentinal coordinate value
                          , opposites :: CoordColorMap
                          }
@@ -26,30 +26,25 @@ instance Show ColorMap where
 
 instance Show Color where
     show c = "SomeColor"
--- sentinalBlue = (-1, 0) :: Coord
 sentinalYellow = (0, -1) :: Coord
 
 -- Constructor
 newColorMap :: (Coord, Coord) -> ColorMap
-newColorMap (start, end) = 
+newColorMap (start, end) =
     let
         accumColors coord (state, points) = (newstate, point:points)
             where (newstate, point) = UF.fresh state coord
         indices = A.range (start, end)
         (ps, pointsList) = foldr accumColors (UF.newPointSupply, []) indices
-        -- (ps2, blue) = UF.fresh ps sentinalBlue
-        -- (ps3, yellow) = UF.fresh ps2 sentinalYellow
         (ps3, yellow) = UF.fresh ps sentinalYellow
-        -- opps = M.fromList [(sentinalBlue, yellow), (sentinalYellow, blue)]
         opps = M.empty
         pointsArray = A.listArray (start, end) pointsList
     in
         ColorMap ps3 -- ps
                  pointsArray -- points
-                 -- blue -- blue
                  yellow -- yellow
                  opps -- opposites
-                 
+
 
 -- Wrapper for the lazy
 equiv :: ColorMap -> Color -> Color -> Bool
@@ -101,7 +96,7 @@ isBlue cmap = areOpposite cmap (yellow cmap)
 -- also returns those opposites
 -- returns the new cmap, the opposite of the first, the opposite of the second
 internalUnionGetOpps :: ColorMap -> Color -> Color -> (ColorMap, Maybe Color, Maybe Color)
-internalUnionGetOpps (cmap@ColorMap{ps, opposites=opps}) c1 c2 = 
+internalUnionGetOpps (cmap@ColorMap{ps, opposites=opps}) c1 c2 =
     let
         r1 = UF.repr ps c1
         r2 = UF.repr ps c2
@@ -113,7 +108,7 @@ internalUnionGetOpps (cmap@ColorMap{ps, opposites=opps}) c1 c2 =
         (cmap {ps=combined, opposites=opps2}, opp1, opp2)
 
 internalMarkOpposite :: ColorMap -> Color -> Color -> ColorMap
-internalMarkOpposite (cmap@ColorMap{ps, opposites=opps}) c1 c2 = 
+internalMarkOpposite (cmap@ColorMap{ps, opposites=opps}) c1 c2 =
     let
         r1 = UF.repr ps c1
         r2 = UF.repr ps c2
@@ -130,7 +125,7 @@ internalMarkSame cmap c1 c2 = let
         (Nothing, Nothing) -> cmap2
         (Just opp1, Nothing) -> internalMarkOpposite cmap2 c1 opp1
         (Nothing, Just opp2) -> internalMarkOpposite cmap2 c1 opp2
-        (Just opp1, Just opp2) -> let 
+        (Just opp1, Just opp2) -> let
             (cmap3, _, _) = internalUnionGetOpps cmap2 opp1 opp2
             in internalMarkOpposite cmap3 c1 opp1
 
@@ -143,24 +138,26 @@ markSame cmap c1 c2 =
         then Nothing          -- Contradiction
     else let
         newcmap = internalMarkSame cmap c1 c2
-        updated = (sameColors newcmap c1) 
-            ++ maybe [] (sameColors newcmap) (lookupOpposite newcmap c1) 
-    in 
+        updated = (sameColors newcmap c1)
+            ++ maybe [] (sameColors newcmap) (lookupOpposite newcmap c1)
+    in
         Just (newcmap, updated)
 
 
 markOpposite :: ColorMap -> Color -> Color -> Maybe (ColorMap, [Coord])
-markOpposite cmap c1 c2 = 
-     if equiv cmap c1 c2
+markOpposite cmap c1 c2 =
+    if areOpposite cmap c1 c2
         then Just (cmap, [])  -- No changes made, ez
-    else if areOpposite cmap c1 c2
-        then Nothing          -- Contradiction
+    else if equiv cmap c1 c2
+        then trace desc Nothing          -- Contradiction
     else case (lookupOpposite cmap c1, lookupOpposite cmap c2) of
-        (Nothing, Nothing) -> let 
+        (Nothing, Nothing) -> let
             newcmap = internalMarkOpposite cmap c1 c2
-            updated = (sameColors newcmap c1) 
+            updated = (sameColors newcmap c1)
                 ++ maybe [] (sameColors newcmap) (lookupOpposite newcmap c1)
-            in Just (newcmap, updated) 
+            in Just (newcmap, updated)
         (Just opp1, Nothing) -> markSame cmap opp1 c2
         (_, Just opp2) -> markSame cmap c1 opp2
+    where
+        desc = "Colors at " ++ (show $ coord cmap c1) ++ " and " ++ (show $ coord cmap c2) ++ " are the same!"
 

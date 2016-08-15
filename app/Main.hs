@@ -36,6 +36,11 @@ testboard1 = Slither.makeSlitherBoard (7, 7)
     , ((6, 0), 3)
     , ((6, 2), 2)
     , ((6, 5), 3)
+    --
+    -- , ((3, 6), 2)
+    -- , ((4, 6), 2)
+    -- , ((5, 6), 1)
+    -- , ((6, 6), 3)
     ]
 
 testboard2 = Slither.makeSlitherBoard (5, 5) 
@@ -59,15 +64,7 @@ checkadjlines gs box = do
     print $ (Slither.lines gs) M.! left
     putStr $ show right ++ ": "
     print $ (Slither.lines gs) M.! right
-    -- maybe (pure ()) (print . ((Slither.lines gs) M.!)) up
-    -- maybe (pure ()) (print . ((Slither.lines gs) M.!)) down
-    -- maybe (pure ()) (print . ((Slither.lines gs) M.!)) left
-    -- maybe (pure ()) (print . ((Slither.lines gs) M.!)) right
 
--- checkboxesadjlines ::  IO ()
-checkboxesadjlines gs = do
-    forM theboxes (checkadjlines gs)
-    return ()
 
 show_progress rules gs = 
     if viewUpdates gs == "Dequeue []" then Printer.showGameState gs
@@ -75,17 +72,16 @@ show_progress rules gs =
         Printer.showGameState gs
         putStr "Next Update: "
         putStrLn $ peekNextUpdate gs
-        threadDelay (1000000)
+        -- threadDelay (250000)
         gs <- pure $ reduceStateOnce rules gs
         case gs of 
             Nothing -> putStrLn "Unsolvable!"
             Just gs -> show_progress rules gs
 
 
-
 main :: IO ()
 main = do 
-    checkboxesadjlines testgs2
+    -- forM theboxes (checkadjlines testgs2)
     case reduceState theRules testgs2 of
         Nothing -> print "oops, nothing!"
         Just gs -> Printer.showGameState gs
