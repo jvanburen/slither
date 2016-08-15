@@ -1,3 +1,5 @@
+{-# LANGUAGE NamedFieldPuns #-}
+
 module Main where
 
 import Lib
@@ -7,6 +9,9 @@ import Logic
 import Data.Maybe
 import Control.Monad
 import Printer
+import qualified Data.Map as M
+import Adj
+import Control.Concurrent (threadDelay)
 
 testboard1 = Slither.makeSlitherBoard (7, 7) 
     [ ((0, 0), 2)
@@ -33,10 +38,58 @@ testboard1 = Slither.makeSlitherBoard (7, 7)
     , ((6, 5), 3)
     ]
 
+testboard2 = Slither.makeSlitherBoard (5, 5) 
+    [((0, 0), 3), ((1, 1), 2), ((2, 2), 3)]
+
 testgs = Slither.newGame testboard1
 startRules = map start3Rules (getBoxes testgs)
 testgs2 = fromJust $ foldM (flip ($)) testgs startRules
 
+
+theboxes = getBoxes testgs2
+checkadjlines gs box = do
+    putStr "Box: "
+    print box
+    let Adj{up, down, left, right} = Slither.boxIncidentLines box
+    putStr $ show up ++ ": "
+    print $ (Slither.lines gs) M.! up
+    putStr $ show down ++ ": "
+    print $ (Slither.lines gs) M.! down
+    putStr $ show left ++ ": "
+    print $ (Slither.lines gs) M.! left
+    putStr $ show right ++ ": "
+    print $ (Slither.lines gs) M.! right
+    -- maybe (pure ()) (print . ((Slither.lines gs) M.!)) up
+    -- maybe (pure ()) (print . ((Slither.lines gs) M.!)) down
+    -- maybe (pure ()) (print . ((Slither.lines gs) M.!)) left
+    -- maybe (pure ()) (print . ((Slither.lines gs) M.!)) right
+
+-- checkboxesadjlines ::  IO ()
+checkboxesadjlines gs = do
+    forM theboxes (checkadjlines gs)
+    return ()
+
+show_progress rules gs = 
+    if viewUpdates gs == "Dequeue []" then Printer.showGameState gs
+    else do
+        Printer.showGameState gs
+        putStr "Next Update: "
+        putStrLn $ peekNextUpdate gs
+        threadDelay (1000000)
+        gs <- pure $ reduceStateOnce rules gs
+        case gs of 
+            Nothing -> putStrLn "Unsolvable!"
+            Just gs -> show_progress rules gs
+
+
+
 main :: IO ()
-main = Printer.showGameState $ fromJust $ reduceState theRules testgs2
+main = do 
+    checkboxesadjlines testgs2
+    case reduceState theRules testgs2 of
+        Nothing -> print "oops, nothing!"
+        Just gs -> Printer.showGameState gs
+
+
+
 

@@ -5,7 +5,7 @@ import Adj
 import qualified Color as Clr
 import Data.Maybe (maybe, fromJust, catMaybes, mapMaybe)
 import Control.Monad
-
+import Printer
 
 isLineType :: GameState -> Maybe LineType -> Line -> Bool
 isLineType gs = flip ((==) . lineType gs)
@@ -84,7 +84,7 @@ innerBoxLineRule box gs = case box of
     Just box -> case (boxNum gs box) of
         Nothing -> Just gs
         Just num -> let
-                incident = toList $ Slither.boxIncidentLines gs box
+                incident = toList $ Slither.boxIncidentLines box
                 lines = filter (isLineType gs $ Just L) incident
                 tbds = filter (isLineType gs Nothing) incident
                 numLines = length lines
@@ -172,14 +172,17 @@ lineContinueRule _ gs = Just gs
 
 start3Rules :: Slither.Box -> GameState -> Maybe GameState
 start3Rules box gs =
-    orthogonal3Rule box gs >>= diagonal3Rule box
+    case boxNum gs box of
+        Just 3 -> orthogonal3Rule box gs >>= diagonal3Rule box
+        Just 0 -> setLinesTo X (boxIncidentLines box) gs
+        _ -> Just gs
 
 orthogonal3Rule :: Slither.Box -> GameState -> Maybe GameState
 orthogonal3Rule box gs =
     if not $ is3 box then Just gs
     else let
         (Adj ub db lb rb)  = boxAdjBoxes gs box
-        (Adj ul dl ll rl) = boxIncidentLines gs box
+        (Adj ul dl ll rl) = boxIncidentLines box
         actions = [ (ub, [dl, ul])
                   , (lb, [ll, rl])
                   , (db, [ul])
@@ -194,7 +197,7 @@ orthogonal3Rule box gs =
 diagonal3Rule :: Slither.Box -> GameState -> Maybe GameState
 diagonal3Rule box gs =
     let
-        (Adj up_l down_l left_l right_l) = boxIncidentLines gs box
+        (Adj up_l down_l left_l right_l) = boxIncidentLines box
         directions = [ (right, up)
                      , (right, down)
                      , (left, up)
@@ -209,7 +212,7 @@ diagonal3Rule box gs =
 
         which = zipWith (singleDiagonal gs) directions diagonals
         ls = join $ map snd $ filter fst $ zip which corners
-    in 
+    in
         setLinesTo L ls gs
 
 type MB = Maybe Box

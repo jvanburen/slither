@@ -1,7 +1,7 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
-module Slither (GameState,
+module Slither (GameState(..), viewUpdates, reduceStateOnce, peekNextUpdate,
     joinColors, sepColors, setLineTo, setLinesTo,
     areSameColor, areOppColor, isBlue, isYellow,
     getLines, getBoxes, getPoints, Rule, lineType,
@@ -22,6 +22,7 @@ import qualified Color as C
 import Control.Monad
 import Adj
 import qualified Data.Dequeue as D
+import qualified Data.Ix as Ix
 
 -- data GameState board = Unsolvable | Solved board | InProgress board
 --     deriving (Show)
@@ -83,6 +84,10 @@ insertUpdate :: Update -> GS -> GS
 insertUpdate update (gs@GS{pendingUpdates}) =
     gs{pendingUpdates=D.pushBack pendingUpdates update}
 
+peekNextUpdate (gs@GS{pendingUpdates=puQ}) = 
+    case D.popFront puQ of
+        Nothing -> "No updates"
+        Just (up, upsQ) -> show up
 
 -- public interface for the updates
 -- TODO: possible optimization: checking for contradictions here also
@@ -101,6 +106,16 @@ setLineTo ltype l = Just . insertUpdate (PutLine ltype l)
 
 setLinesTo :: (Foldable t) => LineType -> t Line -> GS -> Maybe GS
 setLinesTo lt ls gs = Just $ foldr (insertUpdate . PutLine lt) gs ls
+
+reduceStateOnce :: [Rule] -> GameState -> Maybe GameState
+reduceStateOnce rules (gs@GS{pendingUpdates=puQ}) =
+    case D.popFront puQ of
+        Nothing -> Just gs
+        Just (up, upsQ) -> 
+            applyUpdate rules up (gs{pendingUpdates=upsQ})
+
+viewUpdates :: GS -> String
+viewUpdates gs = D.showDequeue $ pendingUpdates gs
 
 
 reduceState :: [Rule] -> GameState -> Maybe GameState
@@ -237,8 +252,8 @@ pointIncidentLines gs (Point c) =
             | otherwise = Line (c2, c)
 
 
-boxIncidentLines :: GS -> Box -> Adj Line
-boxIncidentLines s (Box (r, c)) =
+boxIncidentLines :: Box -> Adj Line
+boxIncidentLines (Box (r, c)) =
     let
         p1 = (r,c)
         p2 = (r,c+1)
@@ -311,10 +326,10 @@ makeSlitherBoard (rows, cols) =
 newGame :: SlitherBoard -> GameState
 newGame sb =
     let
-        indices = A.indices sb
-        (_, (rows, cols)) = A.bounds sb
-        lineList = ([Line (p, (r+1, c)) | p@(r, c) <- indices, r < rows]
-                 ++ [Line (p, (r, c+1)) | p@(r, c) <- indices, c < cols])
+        (start, (rows, cols)) = A.bounds sb
+        indices = Ix.range (start, (rows+1, cols+1))
+        lineList = ([Line (p, (r+1, c)) | p@(r, c) <- indices, r <= rows]
+                 ++ [Line (p, (r, c+1)) | p@(r, c) <- indices, c <= cols])
         lineTypes = M.fromList (zip lineList (repeat Nothing))
     in
         GS { board = sb
